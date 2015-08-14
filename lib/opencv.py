@@ -11,6 +11,7 @@ from __future__ import \
 import collections
 import argparse
 
+import numpy
 import cv2
 
 class Capture(collections.namedtuple('Capture', 'source capture')):
@@ -46,5 +47,25 @@ class Capture(collections.namedtuple('Capture', 'source capture')):
             raise StopIteration
     def __repr__(self):
         return 'Capture.argtype({})'.format(repr(self.source))
+
+def alphaBlend(src, dst):
+    '''numpy.ndarray<x,y,4>, numpy.ndarray<x,y,4> -> numpy.ndarray<x,y,4>
+
+       Alpha blend BGRA `src` onto `dst` in a newly allocated array.
+    '''
+    srcBGR = src[..., :3].astype(numpy.float32) / 255
+    dstBGR = dst[..., :3].astype(numpy.float32) / 255
+    srcA = src[..., 3].astype(numpy.float32) / 255
+    dstA = dst[..., 3].astype(numpy.float32) / 255
+    #
+    outA = srcA + dstA * (1 - srcA)
+    outBGR = ( srcBGR * srcA[..., None]
+             + dstBGR * dstA[..., None] * (1 - srcA[..., None])
+             ) / outA[..., None]
+    #
+    out = numpy.zeros_like(dst)
+    out[..., :3] = (outBGR * 255).round()
+    out[..., 3] = (outA * 255).round()
+    return out
 
 # eof
