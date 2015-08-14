@@ -10,6 +10,7 @@ from __future__ import \
 
 import collections
 import argparse
+import functools
 
 import numpy
 import cv2
@@ -67,5 +68,22 @@ def alphaBlend(src, dst):
     out[..., :3] = (outBGR * 255).round()
     out[..., 3] = (outA * 255).round()
     return out
+
+def gray2color(src, dst=None):
+    return cv2.merge([src, src, src], dst)
+
+def explain(msg, im, pr=False):
+    '''Gush about an ndarray.'''
+    print(im.ndim, im.shape, im.dtype, im.size, msg)
+    if pr:
+        print(im)
+
+def imshowSafe(window, *ims):
+    try:
+        cv2.imshow(window, numpy.hstack(ims))
+    except ValueError as e:
+        map(functools.partial(explain, ''), ims)
+        print('Error:', e)
+        exit(1)
 
 # eof

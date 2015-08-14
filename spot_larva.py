@@ -23,14 +23,6 @@ import lib.opencv as opencv
 import lib.iterutils as iterutils
 import lib.funcutils as funcutils
 
-def gray2color(src, dst=None):
-    return cv2.merge([src, src, src], dst)
-
-def explain(msg, im, pr=False):
-    print(im.ndim, im.shape, im.dtype, im.size, msg)
-    if pr:
-        print(im)
-
 # TODO: expose these defaulted args as options
 def trackThings \
         ( imagePairIter
@@ -88,7 +80,7 @@ def trackThings \
         latestFeatures = ns.feats[-1]
 
         # annotate found features
-        gray2color(im0, ns.im0annot)
+        opencv.gray2color(im0, ns.im0annot)
         for pt in ilPointsAtT(latestFeatures, 0):
             cv2.circle(ns.im0annot, tuple(pt), int(round(minDistance / 2)), activeFeature)
 
@@ -98,7 +90,7 @@ def trackThings \
         # TODO: use status to stop annotating some points
 
         # annotate tracked movement
-        gray2color(im1, ns.im1annot)
+        opencv.gray2color(im1, ns.im1annot)
         curFI = len(ns.feats) - 1
         for fI, features in enumerate(ns.feats):
             pN, _, _ = features.shape
@@ -135,10 +127,11 @@ def prepForTracking(triplets):
 def sink(windowName, stream):
     for (frame, tracked) in stream:
         def showFn(n):
-            cv2.imshow(windowName, numpy.hstack(
-                ( frame
-                , tracked.im1annot
-                )))
+            opencv.imshowSafe \
+                ( windowName
+                , cv2.addWeighted(frame, 0.85, tracked.im1annot, 1, 0)
+                , tracked.im0annot
+                )
             k = cv2.waitKey(n)
             k == 27 and exit(0)
             return k
@@ -149,7 +142,6 @@ def sink(windowName, stream):
         pass
 
 def main(args):
-
     # print args
     map(lambda s: print('{}: {}'.format(s, getattr(args, s))),
             filter(lambda s: s[0] != '_',
