@@ -101,11 +101,10 @@ def trackThings \
         gray2color(im1, ns.im1annot)
         curFI = len(ns.feats) - 1
         for fI, features in enumerate(ns.feats):
-            pN, tN, _ = features.shape
+            pN, _, _ = features.shape
             for pI in range(pN):
                 for (tI, (loc0, loc1)) in enumerate(iterutils.slidingWindow(2, tlPointI(features, pI))):
-                    (cv2.arrowedLine if tI==tN else cv2.line) \
-                            (ns.im1annot, tuple(loc0), tuple(loc1),
+                    cv2.line(ns.im1annot, tuple(loc0), tuple(loc1),
                             activePath if fI == curFI else inactivePath)
             for point in ilPointsAtT(features, 0):
                 cv2.circle(ns.im1annot, tuple(point), int(round(minDistance / 2)),
