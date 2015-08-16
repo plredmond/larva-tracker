@@ -78,9 +78,31 @@ def explain(msg, im, pr=False):
     if pr:
         print(im)
 
-def imshowSafe(window, *ims):
+def liken(ims0):
+    assert all(map(lambda im: im.ndim == 3, ims0)), 'liken currently only supports arrays with ndim==3, got {}'.format(map(lambda im: im.shape, ims0))
+    assert all(map(lambda im: im.dtype == ims0[0].dtype, ims0)), 'liken currently only supports groups of arrays with the same dtype, got {}'.format(map(lambda im: im.dtype, ims0))
+    tx, ty, td = reduce(lambda whd, im: map(max, zip(whd, im.shape)), ims0, [0,0,0])
+    template = numpy.zeros([tx, ty, td], ims0[0].dtype)
+    if td > 3:
+        template[..., 3] = 255
+    ims1 = []
+    for im in ims0:
+        imx, imy, imd = im.shape
+        if imd == td:
+            ims1.append(im)
+        else:
+            t = template.copy()
+            print('Warning: liken allocated {},{} to accomodate a {},{}'.format(t.shape,t.dtype, im.shape,im.dtype))
+            t[:imx,:imy,:max(imd, td)] = im[...]
+            ims1.append(t)
+    else:
+        return ims1
+
+def imshowSafe(window, ims):
+    if type(ims) == numpy.ndarray:
+        ims = [ims]
     try:
-        cv2.imshow(window, numpy.hstack(ims))
+        cv2.imshow(window, numpy.hstack(liken(ims)))
     except ValueError as e:
         map(functools.partial(explain, ''), ims)
         print('Error:', e)
