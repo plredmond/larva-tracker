@@ -110,7 +110,7 @@ def annotateFeatures \
             cv2.circle(annot, tuple(pt), radius, active if redetected else inactive)
         # yield
         cviter._debugWindow(debug, annotateFeatures.func_name, [im0, annot])
-        yield (im0, annot)
+        yield (annot, im0)
 
 def annotatePaths \
         ( tracked
@@ -136,6 +136,6 @@ def annotatePaths \
                             active if fI == curFI else inactive)
         # yield
         cviter._debugWindow(debug, annotatePaths.func_name, [im1, annot])
-        yield (im1, annot)
+        yield (annot, im1)
 
 # eof

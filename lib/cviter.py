@@ -10,6 +10,7 @@ from __future__ import \
 
 import collections
 import itertools
+import functools
 
 import numpy
 import cv2
@@ -30,7 +31,7 @@ def _debugWindow(name, itername, arrs, t=1):
 
 def displaySink(name, stream, t=1, ending=False, quit=27):
     '''str, iter<[ndarray]>[, int] -> None
-    
+
        Consume sequences of images by displaying them left-to-right in a window for `t` ms.
        If `ending` then display the last image indefinitely.
        In either case, return upon receipt of `quit` keycode (default is ESC for me).
@@ -127,5 +128,52 @@ def fork(ways, frames, debug=None):
        Return `ways` new iterators.
     '''
     return itertools.tee(allocating(frames, debug), ways)
+
+def alphaBlended(pairs, debug=None):
+    '''int, iter<(ndarray<x,y,4>, ndarray<x,y,4>)> -> iter<ndarray<x,y,4>>
+
+       Iterate the result of alpha blending incoming pairs of (foreground, background).
+    '''
+    dst = None
+    for (fg, bg) in pairs:
+        if dst is None:
+            dst = numpy.empty_like(bg)
+        assert 3 == fg.ndim == bg.ndim == dst.ndim, 'alphaBlend requires color images (3 dimensions)'
+        assert 4 == fg.shape[2] == bg.shape[2] == dst.shape[2], 'alphaBlend requires images with an alpha layer (depth of 4 values)'
+        assert fg.shape == bg.shape == dst.shape, 'alphaBlend requires images of the same dimensions'
+        opencv.alphaBlend(fg, bg, dst)
+        _debugWindow(debug, alphaBlended.func_name, [fg, bg, dst])
+        yield dst
+
+def cvtColor(code, dstCn, frames, debug=None):
+    dst = None
+    for fr in frames:
+        if dst is None:
+            dst = numpy.empty(fr.shape[:2] + (dstCn,), dtype=fr.dtype)
+        cv2.cvtColor(fr, code, dst, dstCn)
+        _debugWindow(debug, cvtColor.func_name, [fr, dst])
+        yield dst
+
+def applyTo(extract, restore, partialIter, upstream):
+    '''(a -> b), (a, c -> d), (iter<b> -> iter<c>), iter<a> -> iter<d>
+
+       Iterate over a modification of `upstream` in which each item has been `extract`ed passed through `partialIter` and `restore`ed.
+
+       >>> import functools, itertools
+       >>> list(applyTo(
+       ...     lambda (x, y0): y0,
+       ...     lambda (x, _), y1: (x, y1),
+       ...     functools.partial(itertools.imap, lambda y: y ** 2),
+       ...     [('a', 2), ('b', 9)]))
+       [('a', 4), ('b', 81)]
+    '''
+    passthru, toproc = itertools.tee(upstream, 2)
+    return itertools.imap(restore, passthru, partialIter(itertools.imap(extract, toproc)))
+
+ffirst  = functools.partial(applyTo, lambda (a,_): a, lambda (_,b),a: (a,b))
+ssecond = functools.partial(applyTo, lambda (_,b): b, lambda (a,_),b: (a,b))
+fffirst  = functools.partial(applyTo, lambda (a,_,__): a, lambda (_,b,c),a: (a,b,c))
+sssecond = functools.partial(applyTo, lambda (_,b,__): b, lambda (a,_,c),b: (a,b,c))
+ttthird  = functools.partial(applyTo, lambda (_,b,__): b, lambda (a,_,c),b: (a,b,c))
 
 # eof

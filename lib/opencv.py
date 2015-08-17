@@ -11,6 +11,7 @@ from __future__ import \
 import collections
 import argparse
 import functools
+import timeit
 
 import numpy
 import cv2
@@ -49,25 +50,29 @@ class Capture(collections.namedtuple('Capture', 'source capture')):
     def __repr__(self):
         return 'Capture.argtype({})'.format(repr(self.source))
 
-def alphaBlend(src, dst):
+def alphaBlend(fg, bg, dst=None):
     '''numpy.ndarray<x,y,4>, numpy.ndarray<x,y,4> -> numpy.ndarray<x,y,4>
 
-       Alpha blend BGRA `src` onto `dst` in a newly allocated array.
+       Alpha blend BGRA `fg` onto `bg` in a newly allocated array.
     '''
-    srcBGR = src[..., :3].astype(numpy.float32) / 255
-    dstBGR = dst[..., :3].astype(numpy.float32) / 255
-    srcA = src[..., 3].astype(numpy.float32) / 255
-    dstA = dst[..., 3].astype(numpy.float32) / 255
-    #
-    outA = srcA + dstA * (1 - srcA)
-    outBGR = ( srcBGR * srcA[..., None]
-             + dstBGR * dstA[..., None] * (1 - srcA[..., None])
-             ) / outA[..., None]
-    #
-    out = numpy.zeros_like(dst)
-    out[..., :3] = (outBGR * 255).round()
-    out[..., 3] = (outA * 255).round()
-    return out
+    if dst is None:
+        dst = numpy.empty_like(bg)
+
+    scale = 1.0 / 255
+    fgBGR = fg[..., :3].astype(numpy.float32) * scale
+    bgBGR = bg[..., :3].astype(numpy.float32) * scale
+    fgA = (fg[..., 3].astype(numpy.float32) * scale)[..., None]
+    bgA = (bg[..., 3].astype(numpy.float32) * scale)[..., None]
+
+    outA = fgA + bgA * (1 - fgA)
+    outBGR = ( fgBGR * fgA
+             + bgBGR * bgA * (1 - fgA)
+             ) / outA
+
+    dst[..., :3] = (outBGR * 255).round()
+    dst[..., 3] = (outA * 255).round()[..., 0]
+    return dst
+
 
 def gray2color(src, dst=None):
     return cv2.merge([src, src, src], dst)

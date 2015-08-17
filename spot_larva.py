@@ -27,23 +27,14 @@ import lib.funcutils as funcutils
 
 def prepDisplay(stream, debug=None):
     ns = None
-    for (frame, (_, _, _, featureHist), (dt0, featAnnot), (_, pathAnnot)) in stream:
+    for ((_, _, _, featureHist), featAnnot, pathAnnot) in stream:
         # initialize ns
         if ns is None:
-            ns = \
-                ( numpy.empty_like(featAnnot)
-                , numpy.empty_like(featAnnot) )
+            pass
         # proc
-        ns[0][..., :3] = frame
-        ns[1][..., :3] = dt0
-        # FIXME: use a no-allocation version of alpha blend as an iter
-        #ns = ( opencv.alphaBlend(pathAnnot, ns[0])
-        #     , opencv.alphaBlend(featAnnot, ns[1]) )
-        cv2.addWeighted(ns[0], 1, pathAnnot, 1, 0, ns[0])
-        cv2.addWeighted(ns[1], 1, featAnnot, 1, 0, ns[1])
         # yield
-        cviter._debugWindow(debug, prepDisplay.func_name, ns)
-        yield ns
+        cviter._debugWindow(debug, prepDisplay.func_name, [pathAnnot, featAnnot])
+        yield (pathAnnot, featAnnot)
 
 def main(args):
     # print args
@@ -54,15 +45,6 @@ def main(args):
     windowName = '{0} - {1}'.format(path.basename(sys.argv[0]), args.movie.source)
 
     # TODO: find a way to express fork/tee and join/zip with nesting structure, wrap it all up
-
-    #    m
-    #   / \
-    # am   bm
-    # /   / | \
-    #| abm bbm cbm
-    # \  | /  /
-    #  \ |/  /
-    #    m
 
     m_dropped = itertools.islice(args.movie, args.drop, None)
     am_dropped, bm_dropped = itertools.tee(m_dropped, 2)
@@ -75,9 +57,15 @@ def main(args):
     # TODO: try different args to goodFeaturesToTrack and calcOpticalFlowPyrLK
 
     bbm_feats = triter.annotateFeatures(bbm_tracked)
-    cbm_paths = triter.annotatePaths(cbm_tracked)
+    bbm_feata = cviter.ssecond(functools.partial(cviter.cvtColor, cv2.COLOR_GRAY2BGRA, 4), bbm_feats)
+    bbm_annot = cviter.alphaBlended(bbm_feata)
 
-    m_stream = itertools.izip(am_dropped, abm_tracked, bbm_feats, cbm_paths)
+    cbm_paths = triter.annotatePaths(cbm_tracked)
+    cbm_fgbg = itertools.imap(lambda fr, (annot, _): (annot, fr), am_dropped, cbm_paths)
+    cbm_fgbga = cviter.ssecond(functools.partial(cviter.cvtColor, cv2.COLOR_BGR2BGRA, 4), cbm_fgbg)
+    cbm_annot = cviter.alphaBlended(cbm_fgbga)
+
+    m_stream = itertools.izip(abm_tracked, bbm_annot, cbm_annot)
     m_display = prepDisplay(m_stream)
     cviter.displaySink(windowName, m_display, ending=True)
 
