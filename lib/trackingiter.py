@@ -17,12 +17,6 @@ import cv2
 import lib.iterutils as iterutils
 import lib.cviter as cviter
 
-# feature set accessors
-tlPointI = lambda itlArr, i: itlArr[i,:,:]
-ilPointsAtT = lambda itlArr, t: itlArr[:,t,:]
-ilPointsLatest = lambda itlArr: ilPointsAtT(itlArr, -1)
-itlPointsLatest = lambda itlArr: ilPointsLatest(itlArr)[:,numpy.newaxis,:]
-
 # annotation colors
 Color = collections.namedtuple('Color', 'b g r a')
 __active = Color(0, 0, 255, 255)
@@ -56,10 +50,6 @@ def trackCorners \
     '''
     # namespace for state
     ns = None
-    # namespace mutators
-    def setPointsLatest(itlArr):
-        itlFeatArr = ns.feats.pop()
-        ns.feats.append(numpy.hstack([itlFeatArr, itlArr]))
     # input stream
     stream = itertools.izip \
         ( cviter.buffering(2, frames)
@@ -77,13 +67,25 @@ def trackCorners \
 
         # make features
         if redetectFeatures or not ns.feats:
-            ns.feats.append(cv2.goodFeaturesToTrack(
-                im0, maxCorners, qualityLevel, minDistance))
+            # detect points
+            newPts = cv2.goodFeaturesToTrack(im0, maxCorners, qualityLevel, minDistance)
+            # append them as the latest featureset
+            # input: insert a sentinel status value of -1 to the 2nd position in axis 2 to indicate these are detected features
+            ns.feats.append(numpy.insert(newPts, 2, -1, axis=2))
 
-        # update feature locations
-        newPts, status, _ = cv2.calcOpticalFlowPyrLK(im0, im1, itlPointsLatest(ns.feats[-1]))
-        setPointsLatest(newPts)
-        # TODO: include status as extra coordinate-dimension
+        # retrieve the latest feature set
+        itpArr = ns.feats[-1]
+
+        # find updated feature locations
+        # input: fix on latest time, extract only x&y properties, restore empty time axis
+        newPts, status, _ = cv2.calcOpticalFlowPyrLK(im0, im1, itpArr[:,-1,:2][:,numpy.newaxis,:])
+        # concatenate new points on the time axis
+        # input: insert status as additional property of each point
+        ns.feats[-1] = numpy.concatenate([itpArr, numpy.insert(newPts, 2, status, axis=2)], axis=1)
+
+        # insert new points to the latest position in the time axis (where `pts` input is the result of insert above)
+        #_,T,_ = itpArr.shape
+        #ns.feats[-1] = numpy.insert(itpArr, T, pts[:,0,:], axis=1)
 
         cviter._debugWindow(debug, trackCorners.func_name, [im0, im1])
         yield (im0, im1, redetectFeatures, ns.feats)
@@ -102,8 +104,10 @@ def annotateFeatures \
         if annot is None:
             annot = numpy.empty(im.shape[:2] + (3,), im.dtype)
         annot[...] = im[...]
-        for pt in ilPointsAtT(featureHist[-1], 0):
-            cv2.circle(annot, tuple(pt), radius, active if redetected else inactive)
+        itpArr = featureHist[-1]
+        for (x, y, s) in itpArr[:,0,:]:
+            assert s == -1, 'features are found-points (status is -1, not 0 or 1)'
+            cv2.circle(annot, (x, y), radius, active if redetected else inactive)
         cviter._debugWindow(debug, annotateFeatures.func_name, [im, annot])
         yield annot
 
@@ -119,14 +123,14 @@ def annotatePaths \
         if annot is None:
             annot = numpy.empty(im.shape[:2] + (3,), im.dtype)
         annot[...] = im[...]
-        curFI = len(featureHist) - 1
-        for fI, features in enumerate(featureHist):
-            pN, _, _ = features.shape
-            for pI in range(pN):
-                spans = iterutils.slidingWindow(2, tlPointI(features, pI))
-                for (tI, (loc0, loc1)) in enumerate(spans):
-                    cv2.line(annot, tuple(loc0), tuple(loc1),
-                            active if fI == curFI else inactive)
+        cur_f = len(featureHist) - 1
+        for f, itpArr in enumerate(featureHist):
+            I, _, _ = itpArr.shape
+            for i in range(I):
+                for (x0, y0, s0), (x1, y1, s1) in iterutils.slidingWindow(2, itpArr[i,:,:]):
+                    if s0 and s1:
+                        cv2.line(annot, (x0, y0), (x1, y1),
+                                active if f == cur_f else inactive)
         cviter._debugWindow(debug, annotatePaths.func_name, [im, annot])
         yield annot
 
