@@ -56,17 +56,12 @@ def main(args):
     abm_tracked, bbm_tracked, cbm_tracked = itertools.tee(bm_tracked, 3)
     # TODO: try different args to goodFeaturesToTrack and calcOpticalFlowPyrLK
 
-    bbm_feats = triter.annotateFeatures(bbm_tracked)
-    bbm_feata = cviter.ssecond(functools.partial(cviter.cvtColor, cv2.COLOR_GRAY2BGRA, 4), bbm_feats)
-    bbm_annot = cviter.alphaBlended(bbm_feata)
+    bbm_annot = triter.annotateFeatures(itertools.imap(
+        lambda tr: (tr, tr[0]), bbm_tracked))
 
-    cbm_paths = triter.annotatePaths(cbm_tracked)
-    cbm_fgbg = itertools.imap(lambda fr, (annot, _): (annot, fr), am_dropped, cbm_paths)
-    cbm_fgbga = cviter.ssecond(functools.partial(cviter.cvtColor, cv2.COLOR_BGR2BGRA, 4), cbm_fgbg)
-    cbm_annot = cviter.alphaBlended(cbm_fgbga)
+    cbm_annot = triter.annotatePaths(itertools.izip(cbm_tracked, am_dropped))
 
-    m_stream = itertools.izip(abm_tracked, bbm_annot, cbm_annot)
-    m_display = prepDisplay(m_stream)
+    m_display = prepDisplay(itertools.izip(abm_tracked, bbm_annot, cbm_annot))
     cviter.displaySink(windowName, m_display, ending=True)
 
     # - find the blob of moving larva in the center (area of interest)

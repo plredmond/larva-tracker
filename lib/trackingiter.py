@@ -25,10 +25,8 @@ itlPointsLatest = lambda itlArr: ilPointsLatest(itlArr)[:,numpy.newaxis,:]
 
 # annotation colors
 Color = collections.namedtuple('Color', 'b g r a')
-__activeFeature = Color(0, 0, 255, 255)
-__inactiveFeature = Color(0, 0, 75, 255)
-__activePath = Color(150, 100, 0, 255)
-__inactivePath = Color(50, 50, 50, 255)
+__active = Color(0, 0, 255, 255)
+__inactive = Color(51, 153, 255, 255)
 
 # tracking defaults
 __maxCorners = 100
@@ -91,41 +89,36 @@ def trackCorners \
         yield (im0, im1, redetectFeatures, ns.feats)
 
 def annotateFeatures \
-        ( tracked
+        ( pairs
         , radius = __circleRadius
-        , active = __activeFeature
-        , inactive = __inactiveFeature
+        , active = __active
+        , inactive = __inactive
         , debug = None
         ):
-    '''iter<...>[, int][, Color][, Color] -> iter<(ndarray, ndarray)>
+    '''iter<([ndarray<i,t,2>], ndarray)>[, int][, Color][, Color][, str] -> iter<ndarray>
     '''
     annot = None
-    for (im0, _, redetected, featureHist) in tracked:
-        # alloc
+    for ((_, _, redetected, featureHist), im) in pairs:
         if annot is None:
-            annot = numpy.empty(im0.shape[:2] + (4,), im0.dtype)
-        # proc
-        annot[...] = 0
+            annot = numpy.empty(im.shape[:2] + (3,), im.dtype)
+        annot[...] = im[...]
         for pt in ilPointsAtT(featureHist[-1], 0):
             cv2.circle(annot, tuple(pt), radius, active if redetected else inactive)
-        # yield
-        cviter._debugWindow(debug, annotateFeatures.func_name, [im0, annot])
-        yield (annot, im0)
+        cviter._debugWindow(debug, annotateFeatures.func_name, [im, annot])
+        yield annot
 
 def annotatePaths \
-        ( tracked
-        , active = __activePath
-        , inactive = __inactivePath
+        ( pairs
+        , active = __active
+        , inactive = __inactive
         , debug=None):
-    '''iter<...>[, Color][, Color] -> iter<(ndarray, ndarray)>
+    '''iter<([ndarray<i,t,2>], ndarray)>[, Color][, Color][, str] -> iter<ndarray>
     '''
     annot = None
-    for (_, im1, _, featureHist) in tracked:
-        # alloc
+    for ((_, _, _, featureHist), im) in pairs:
         if annot is None:
-            annot = numpy.empty(im1.shape[:2] + (4,), im1.dtype)
-        # proc
-        annot[...] = 0
+            annot = numpy.empty(im.shape[:2] + (3,), im.dtype)
+        annot[...] = im[...]
         curFI = len(featureHist) - 1
         for fI, features in enumerate(featureHist):
             pN, _, _ = features.shape
@@ -134,8 +127,7 @@ def annotatePaths \
                 for (tI, (loc0, loc1)) in enumerate(spans):
                     cv2.line(annot, tuple(loc0), tuple(loc1),
                             active if fI == curFI else inactive)
-        # yield
-        cviter._debugWindow(debug, annotatePaths.func_name, [im1, annot])
-        yield (annot, im1)
+        cviter._debugWindow(debug, annotatePaths.func_name, [im, annot])
+        yield annot
 
 # eof
