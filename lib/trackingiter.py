@@ -19,8 +19,9 @@ import lib.cviter as cviter
 
 # annotation colors
 Color = collections.namedtuple('Color', 'b g r a')
-__active = Color(0, 0, 255, 255)
-__inactive = Color(51, 153, 255, 255)
+__active = Color(0, 255, 0, 255)
+__inactive = Color(255, 0, 0, 255)
+__invalid = Color(0, 0, 255, 255)
 
 # tracking defaults
 __maxCorners = 100
@@ -115,6 +116,7 @@ def annotatePaths \
         ( pairs
         , active = __active
         , inactive = __inactive
+        , invalid = __invalid
         , debug=None):
     '''iter<([ndarray<i,t,2>], ndarray)>[, Color][, Color][, str] -> iter<ndarray>
     '''
@@ -128,9 +130,9 @@ def annotatePaths \
             I, _, _ = itpArr.shape
             for i in range(I):
                 for (x0, y0, s0), (x1, y1, s1) in iterutils.slidingWindow(2, itpArr[i,:,:]):
-                    if s0 and s1:
-                        cv2.line(annot, (x0, y0), (x1, y1),
-                                active if f == cur_f else inactive)
+                    cv2.line(annot, (x0, y0), (x1, y1),
+                            (active if f == cur_f else inactive)
+                            if s0 and s1 else invalid)
         cviter._debugWindow(debug, annotatePaths.func_name, [im, annot])
         yield annot
 
