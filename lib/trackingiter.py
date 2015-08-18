@@ -59,17 +59,17 @@ def trackCorners \
         )
     # mainloop
     for ((im0, im1), redetectFeatures) in stream:
+        assert im0.ndim == 3 and im0.shape[2] == 1, 'single channel image'
+        assert not (im0 == 0).all(), 'not blank'
         # initialize ns if it hasn't already been
         if ns is None:
             ns = TrackState(feats=[])
-
-        # verify datatypes
-        # TODO: add assertion about im0 being gray?
 
         # make features
         if redetectFeatures or not ns.feats:
             # detect points
             newPts = cv2.goodFeaturesToTrack(im0, maxCorners, qualityLevel, minDistance)
+            assert newPts is not None, 'must produce features'
             # append them as the latest featureset
             # input: insert a sentinel status value of -1 to the 2nd position in axis 2 to indicate these are detected features
             ns.feats.append(numpy.insert(newPts, 2, -1, axis=2))
