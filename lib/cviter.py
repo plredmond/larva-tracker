@@ -180,4 +180,33 @@ fffirst  = functools.partial(applyTo, lambda (a,_,__): a, lambda (_,b,c),a: (a,b
 sssecond = functools.partial(applyTo, lambda (_,b,__): b, lambda (a,_,c),b: (a,b,c))
 ttthird  = functools.partial(applyTo, lambda (_,b,__): b, lambda (a,_,c),b: (a,b,c))
 
+def lift \
+        ( fn
+        , upstream
+        , egfn = None
+        , shapefn = None
+        , dtypefn = None
+        , allocfn = None
+        , debug = None
+        ):
+    egfn = egfn or (lambda x: x)
+    shapefn = shapefn or (lambda x: x.shape)
+    dtypefn = dtypefn or (lambda x: x.dtype)
+    allocfn = allocfn or (lambda x: numpy.empty(shapefn(x), dtypefn(x)))
+    ns = None
+    for x in upstream:
+        if ns is None:
+            ns = allocfn(egfn(x))
+        fn(x, ns)
+        _debugWindow(debug, lift.func_name, ns)
+        yield ns
+
+def fgMask(frames, debug=None):
+    model = cv2.BackgroundSubtractorMOG()
+    return lift \
+        ( lambda fr, mask: model.apply(fr, mask)
+        , frames
+        , debug=debug
+        )
+
 # eof
