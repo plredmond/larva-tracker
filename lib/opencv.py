@@ -84,6 +84,7 @@ def explain(msg, im, pr=False):
         print(im)
 
 def liken(ims0):
+    ''' make dissimilar images similar enough to display with imshow '''
     assert all(map(lambda im: im.ndim == 3, ims0)), 'liken currently only supports arrays with ndim==3, got {}'.format(map(lambda im: im.shape, ims0))
     assert all(map(lambda im: im.dtype == ims0[0].dtype, ims0)), 'liken currently only supports groups of arrays with the same dtype, got {}'.format(map(lambda im: im.dtype, ims0))
     tx, ty, td = reduce(lambda whd, im: map(max, zip(whd, im.shape)), ims0, [0,0,0])
@@ -104,6 +105,7 @@ def liken(ims0):
         return ims1
 
 def imshowSafe(window, ims):
+    ''' display images with imshow '''
     if type(ims) == numpy.ndarray:
         ims = [ims]
     try:
