@@ -107,17 +107,21 @@ def buffering(size, frames, debug=None):
             _debugWindow(debug, buffering.func_name, y)
             yield y
 
-def motion(frames, debug=None):
-    '''iter<ndarray>[, str] -> iter<ndarray>
+def motion(frames, era=None, debug=None):
+    '''iter<ndarray>[, str][, str] -> iter<ndarray>
 
        Iterate over the absdiff of subsequent pairs of frames.
     '''
+    f = { 'span': lambda t0, t1, dt: cv2.absdiff(t0, t1, dt)
+        , 'past': lambda t0, t1, dt: cv2.subtract(t0, t1, dt)
+        , 'future': lambda t0, t1, dt: cv2.subtract(t1, t0, dt)
+        }[era or 'span']
     dt = None
     for (t0, t1) in buffering(2, frames, debug):
         assert id(t0) != id(t1)
         if dt is None:
             dt = numpy.empty_like(t0)
-        cv2.absdiff(t0, t1, dt)
+        f(t0, t1, dt)
         _debugWindow(debug, motion.func_name, [t0, t1, dt])
         yield dt
 
