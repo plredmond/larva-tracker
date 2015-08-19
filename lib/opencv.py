@@ -113,4 +113,11 @@ def imshowSafe(window, ims):
         print('Error:', e)
         exit(1)
 
+def circle(diameter, color=255):
+    ''' create a new image containing a centered circle '''
+    arr = numpy.zeros((diameter, diameter), numpy.uint8)
+    m = diameter // 2
+    cv2.circle(arr, (m, m), m, color, -1)
+    return arr
+
 # eof
