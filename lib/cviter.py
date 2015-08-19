@@ -8,6 +8,7 @@ from __future__ import \
     , unicode_literals
     )
 
+import sys
 import collections
 import itertools
 import functools
@@ -207,6 +208,60 @@ def fgMask(frames, debug=None):
         ( lambda fr, mask: model.apply(fr, mask)
         , frames
         , debug=debug
+        )
+
+MovementMask = collections.namedtuple('MovementMask', 'roi_fn bounding_box contour mask')
+def movementMask \
+        ( movie
+        , blur_size = 9
+        , threshold = 40
+        , dilate_size = 6
+        , dilate_iterations = 3
+        , debug = None
+        ):
+    ''' find the movement in a sequence of images '''
+    element = opencv.circle(dilate_size, 1)
+    # find points of movement and exaggerate them
+    masks = lift \
+        ( lambda fr, m: \
+            ( cv2.GaussianBlur(fr, (blur_size, blur_size), 0, m, 0)
+            , cv2.threshold(m, threshold, 255, cv2.THRESH_BINARY, m)
+            , cv2.dilate(m, element, m, (-1, -1), dilate_iterations)
+            )
+        , motion(gray(movie))
+        , debug = debug
+        )
+    # accumulate all points of movement into a single contour diagram
+    accum = lift \
+        ( lambda m, acc: cv2.bitwise_and(m, m, acc, mask=m)
+        , masks
+        , allocfn = lambda m: numpy.zeros_like(m)
+        , debug = debug and (debug + '-accum')
+        )
+    print('Accumulating movement mask..')
+    for i, mask in enumerate(accum):
+        print('frame %d' % i, end='\r')
+        sys.stdout.flush()
+    # select the largest contour
+    contours, _ = cv2.findContours(mask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_TC89_L1)
+    largest = max(contours, key=lambda c: cv2.contourArea(c))
+    x0, y0, width, height = cv2.boundingRect(largest)
+    p0 = (x0, y0)
+    p1 = (x0 + width, y0 + height)
+    x1, y1 = p1
+    out = numpy.zeros_like(mask)
+    cv2.drawContours(out, [largest], 0, 255, -1)
+    if debug:
+        info = numpy.zeros(mask.shape[:2] + (3,), dtype=numpy.uint8)
+        cv2.rectangle(info, p0, p1, (255,0,0), 2)
+        cv2.drawContours(info, contours, -1, (0,0,255), 1)
+        cv2.drawContours(info, [largest], 0, (0,255,0), -1)
+        _debugWindow(debug, movementMask.func_name, [mask, info, out], t=3000)
+    return MovementMask \
+        ( roi_fn = lambda im: im[y0:y1, x0:x1, ...]
+        , bounding_box = [p0, p1]
+        , contour = largest
+        , mask = out
         )
 
 # eof
