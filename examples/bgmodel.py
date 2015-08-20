@@ -15,14 +15,14 @@ import itertools
 import cv2
 import numpy
 
-import lib.opencv as opencv
+import lib.cvutils as cvutils
 
 def renewCap(c):
     c.capture.release()
     return c.duplicate()
 
 if __name__ == '__main__':
-    m = opencv.Capture.argtype(sys.argv[1] if sys.argv[1:] else 0)
+    m = cvutils.Capture.argtype(sys.argv[1] if sys.argv[1:] else 0)
     w = 'opencv'
     cv2.namedWindow(w, cv2.WINDOW_NORMAL)
 

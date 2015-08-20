@@ -21,8 +21,8 @@ import numpy
 import cv2
 
 import lib.cviter as cviter
-import lib.trackingiter as triter
-import lib.opencv as opencv
+import lib.track_corners as trcorners
+import lib.cvutils as cvutils
 import lib.iterutils as iterutils
 import lib.funcutils as funcutils
 
@@ -149,8 +149,8 @@ if __name__ == '__main__':
     doctests = map(lambda m: (m, doctest.testmod(m)),
         [ None
         , cviter
-        , triter
-        , opencv
+        , trcorners
+        , cvutils
         , iterutils
         , funcutils
         ])
@@ -168,7 +168,7 @@ if __name__ == '__main__':
     # movie file
     p.add_argument \
         ( 'movie'
-        , type = opencv.Capture.argtype
+        , type = cvutils.Capture.argtype
         , help = '''The path to the movie file to perform image tracking on.''')
     p.add_argument \
         ( '-d', '--drop'

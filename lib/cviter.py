@@ -17,7 +17,7 @@ import numpy
 import cv2
 
 import lib.iterutils as iterutils
-import lib.opencv as opencv
+import lib.cvutils as cvutils
 
 def _debugWindow(name, itername, arrs, t=1):
     '''str, [ndarray] -> None
@@ -27,7 +27,7 @@ def _debugWindow(name, itername, arrs, t=1):
     if name:
         name = 'debug|{}|{}'.format(name, itername)
         cv2.namedWindow(name, cv2.WINDOW_NORMAL)
-        opencv.imshowSafe(name, arrs)
+        cvutils.imshowSafe(name, arrs)
         cv2.waitKey(t)
 
 def displaySink(name, stream, t=1, ending=False, quit=27):
@@ -42,7 +42,7 @@ def displaySink(name, stream, t=1, ending=False, quit=27):
     cv2.namedWindow(name, cv2.WINDOW_NORMAL)
     for arrs in stream:
         def show(n):
-            opencv.imshowSafe(name, arrs)
+            cvutils.imshowSafe(name, arrs)
             return cv2.waitKey(n)
         if show(t) == quit:
             return
@@ -146,7 +146,7 @@ def alphaBlended(pairs, debug=None):
         assert 3 == fg.ndim == bg.ndim == dst.ndim, 'alphaBlend requires color images (3 dimensions)'
         assert 4 == fg.shape[2] == bg.shape[2] == dst.shape[2], 'alphaBlend requires images with an alpha layer (depth of 4 values)'
         assert fg.shape == bg.shape == dst.shape, 'alphaBlend requires images of the same dimensions'
-        opencv.alphaBlend(fg, bg, dst)
+        cvutils.alphaBlend(fg, bg, dst)
         _debugWindow(debug, alphaBlended.func_name, [fg, bg, dst])
         yield dst
 
@@ -220,7 +220,7 @@ def movementMask \
         , debug = None
         ):
     ''' find the movement in a sequence of images '''
-    element = opencv.circle(dilate_size, 1)
+    element = cvutils.circle(dilate_size, 1)
     # find points of movement and exaggerate them
     masks = lift \
         ( lambda fr, m: \
