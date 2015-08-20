@@ -15,6 +15,7 @@ import os.path as path
 import functools
 import itertools
 import argparse
+import doctest
 
 import numpy
 import cv2
@@ -145,6 +146,23 @@ default = \
     }
 
 if __name__ == '__main__':
+    doctests = map(lambda m: (m, doctest.testmod(m)),
+        [ None
+        , cviter
+        , triter
+        , opencv
+        , iterutils
+        , funcutils
+        ])
+    if any(test.failed for module, test in doctests):
+        for module, test in doctests:
+            print('{m}: {f} of {a} tests failed'.format \
+                ( m = module.__name__ if module else __name__
+                , f = test.failed
+                , a = test.attempted
+                ))
+        exit(9)
+
     p = argparse.ArgumentParser()
 
     # movie file

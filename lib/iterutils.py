@@ -11,9 +11,9 @@ from __future__ import \
 import collections
 import itertools
 
-# source is a generator
-# pipe stages take upstream iter and return downstream iter
-# sink is a reducer, eg list() or reduce()
+# a source is a generator
+# a pipe stage is a generator which takes an upstream iter
+# a sink is a reducer, eg list() or reduce()
 
 fork = itertools.tee
 join = itertools.izip_longest
@@ -24,13 +24,13 @@ def slidingWindow(size, upstream):
 
        Iterate over every `size` length subsequence of `upstream`.
 
-       >>> list(slidingWindow(1, list("hello")))
+       >>> list(slidingWindow(1, list(b'hello')))
        [['h'], ['e'], ['l'], ['l'], ['o']]
-       >>> list(slidingWindow(3, list("hello")))
+       >>> list(slidingWindow(3, list(b'hello')))
        [['h', 'e', 'l'], ['e', 'l', 'l'], ['l', 'l', 'o']]
-       >>> list(slidingWindow(5, list("hello")))
+       >>> list(slidingWindow(5, list(b'hello')))
        [['h', 'e', 'l', 'l', 'o']]
-       >>> list(slidingWindow(6, list("hello")))
+       >>> list(slidingWindow(6, list(b'hello')))
        []
     '''
     buff = collections.deque([], size)

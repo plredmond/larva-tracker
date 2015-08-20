@@ -170,7 +170,7 @@ def applyTo(extract, restore, partialIter, upstream):
        ...     lambda (x, _), y1: (x, y1),
        ...     functools.partial(itertools.imap, lambda y: y ** 2),
        ...     [('a', 2), ('b', 9)]))
-       [('a', 4), ('b', 81)]
+       [(u'a', 4), (u'b', 81)]
     '''
     passthru, toproc = itertools.tee(upstream, 2)
     return itertools.imap(restore, passthru, partialIter(itertools.imap(extract, toproc)))
