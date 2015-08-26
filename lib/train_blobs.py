@@ -9,6 +9,7 @@ from __future__ import \
     , unicode_literals
     )
 
+import os.path
 import collections
 import pickle
 
@@ -20,10 +21,11 @@ import lib.blob_params as blob_params
 TrainSession = collections.namedtuple('TrainSession',
         'bucket_count param_space param_index train_state')
 
-def restore_session(file_path):
-    with open('{}.p'.format(file_path), 'rb') as p_file:
-        bucket_count, param_space, param_index, train_state_path = pickle.load(p_file)
-    with open(train_state_path, 'rb') as npy_file:
+def restore_session(raw_path):
+    path, _ = os.path.splitext(raw_path)
+    with open('{}.p'.format(path), 'rb') as p_file:
+        bucket_count, param_space, param_index = pickle.load(p_file)
+    with open('{}.npy'.format(path), 'rb') as npy_file:
         train_state = numpy.load(npy_file)
     assert isinstance(bucket_count, int)
     assert isinstance(param_space, dict)
@@ -36,24 +38,24 @@ def restore_session(file_path):
             , train_state = train_state
             )
 
-def preserve_session(file_path, sess, paranoid=False):
+def preserve_session(raw_path, sess, paranoid=False):
+    path, _ = os.path.splitext(raw_path)
     assert isinstance(sess.bucket_count, int)
     assert isinstance(sess.param_space, dict)
     assert isinstance(sess.param_index, list)
     assert isinstance(sess.train_state, numpy.ndarray)
-    with open('{}.npy'.format(file_path), 'wb') as npy_file:
+    with open('{}.npy'.format(path), 'wb') as npy_file:
         numpy.save(npy_file, sess.train_state)
-    with open('{}.p'.format(file_path), 'wb') as p_file:
+    with open('{}.p'.format(path), 'wb') as p_file:
         pickle.dump \
                 ( ( sess.bucket_count
                   , sess.param_space
                   , sess.param_index
-                  , npy_file.name
                   )
                 , p_file
                 )
     if paranoid:
-        sessB = restore_session(file_path)
+        sessB = restore_session(raw_path)
         assert sess.bucket_count == sessB.bucket_count
         assert sess.param_space == sessB.param_space
         assert sess.param_index == sessB.param_index

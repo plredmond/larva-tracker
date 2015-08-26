@@ -10,6 +10,7 @@ from __future__ import \
     )
 
 import sys
+import os.path
 import pickle
 import time
 import glob
@@ -67,11 +68,11 @@ def main(args):
         cv2.namedWindow(window, cv2.WINDOW_NORMAL)
 
     # training session
-    # FIXME: strip extensions off args.session
-    if args.session \
-            and 1 == len(glob.glob(args.session + '*.p')) \
-            and 1 == len(glob.glob(args.session + '*.npy')):
-        sess = train_blobs.restore_session(args.session)
+    session_path, _ = os.path.splitext(args.session) if args.session else (None, None)
+    if session_path \
+            and 1 == len(glob.glob(session_path + '*.p')) \
+            and 1 == len(glob.glob(session_path + '*.npy')):
+        sess = train_blobs.restore_session(session_path)
         train_blobs.print_session_info(sess)
         train_blobs.training_status(sess, '', verbose=True)
         print('Resuming..')
@@ -100,7 +101,7 @@ def main(args):
               }
             )
         train_blobs.print_session_info(sess)
-        if not args.session:
+        if not session_path:
             print('WARNING: No data will be saved. Give -s/--session to save data.')
         if raw_input('Continue? [Y/n] ').lower().startswith('n'):
             return 0
@@ -109,7 +110,7 @@ def main(args):
         ( sess
         , movies
         , expect_larva
-        , path = args.session
+        , path = session_path
         , window = window
         , verbose = args.verbose
         )
@@ -151,7 +152,6 @@ if __name__ == '__main__':
         , action = 'store_true'
         , help = '''Verbose execution.''')
     exit(main(p.parse_args()))
-
 
 # eof
 
