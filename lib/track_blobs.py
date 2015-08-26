@@ -15,6 +15,7 @@ import cv2
 import numpy
 
 import lib.cviter as cviter
+import lib.blob_params as blob_params
 
 # supersillyus
 
@@ -30,59 +31,59 @@ import lib.cviter as cviter
 # assign blobset[t1] to blobset[t0]
 #   - for status==1 flows
 
+#cv2.cvtColor(bim1, cv2.COLOR_GRAY2BGR, ns.annotCur)
+
 TrackState = collections.namedtuple('TrackState', 'blobHist flowHist annotCur annotHist')
 
-def trackBlobs(frames, debug=None):
+def trackBlobs(detector, frames, debug=None):
     '''iter<ndarray<x,y,3>>[, str] -> ...
     '''
     ns = None
-    detect = lambda im: \
-        ( permissive_detector.detect(im)
-        , exclusive_detector.detect(im)
-        )
+
+    # fork
     framesA, framesB = cviter.fork(2, frames)
+
     # blob input can be anything
     blobInput = cviter.buffering(2, cviter.lift \
-        ( lambda fr, ns: cv2.blur(fr, (5, 5), ns)
+        ( lambda fr, denoise: cv2.blur(fr, (5, 5), denoise)
         , framesA
         ))
+
     # flow input should be 8-bit
     flowInput = cviter.buffering(2, cviter.gray(framesB))
-    for ((bim0, bim1), (fim0, fim1)) in itertools.izip(blobInput, flowInput):
+
+    # loop
+    for (bim0, bim1), (fim0, fim1) in itertools.izip(blobInput, flowInput):
         # allocate
         if ns is None:
             ns = TrackState \
-                ( blobHist = [detect(bim0)]
+                ( blobHist = [detector.detect(bim0)]
                 , flowHist = []
                 , annotCur = numpy.empty(bim1.shape[:2] + (3,), bim1.dtype)
                 , annotHist = numpy.empty(bim1.shape[:2] + (3,), bim1.dtype)
                 )
-        ns.blobHist.append(detect(bim1))
-        ((bper0, bexc0), (bper1, bexc1)) = ns.blobHist[-2:]
-#       print(b0[0])
-#       p0 = None #numpy.array(, numpy.float32)
-        import lib.cvutils as cvutils
-#       cvutils.explain('input', p0)
-#       p1, status, err = cv2.calcOpticalFlowPyrLK(t0, t1, p0)
-#       cvutils.explain('output', p1)
-        # match b0 to b1 based on updated location predictions in p1
+        ns.blobHist.append(detector.detect(bim1))
+        bs0, bs1 = ns.blobHist[-2:]
+        ps0 = numpy.array([b.pt for b in bs0], numpy.float32)
+        ps1, status, err = cv2.calcOpticalFlowPyrLK(fim0, fim1, ps0)
+        # TODO: store ps0..ps1 somewhere
+        # TODO-LATER: match bs0 to bs1 based on updated location predictions in ps1
 
         # annotate current
-        #cv2.cvtColor(bim1, cv2.COLOR_GRAY2BGR, ns.annotCur)
         numpy.copyto(ns.annotCur, bim1)
-        cv2.drawKeypoints(ns.annotCur, bper1, ns.annotCur, (0,0,255), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
-        cv2.drawKeypoints(ns.annotCur, bexc1, ns.annotCur, (50,150,0), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+        cv2.drawKeypoints(ns.annotCur, bs1, ns.annotCur, (50,150,0), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+        for p0, p1 in zip(ps0, ps1):
+            cv2.line(ns.annotCur, tuple(p0), tuple(p1), (0,0,255))
 
         # annotate history
-        #cv2.cvtColor(bim1, cv2.COLOR_GRAY2BGR, ns.annotHist)
+        # TODO: loop to draw lines?
         numpy.copyto(ns.annotHist, bim1)
-        for (bper, bexc) in ns.blobHist:
-            cv2.drawKeypoints(ns.annotHist, bper, ns.annotHist, (0,0,255), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
-            cv2.drawKeypoints(ns.annotHist, bexc, ns.annotHist, (50,150,0), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+        for b in ns.blobHist:
+            cv2.drawKeypoints(ns.annotHist, b, ns.annotHist, (50,150,0), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
 
         if debug:
-            bimdt = cv2.absdiff(bim0, bim1)[...,None]
-            fimdt = cv2.absdiff(fim0, fim1) # [...,None]
+            bimdt = cv2.absdiff(bim0, bim1) # [...,None]
+            fimdt = cv2.absdiff(fim0, fim1)[...,None]
             cviter._debugWindow(debug, trackBlobs.func_name, [bimdt, fimdt, ns.annotCur, ns.annotHist])
         yield [ns.annotCur, ns.annotHist]
 

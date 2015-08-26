@@ -21,6 +21,8 @@ import numpy
 import cv2
 
 import lib.cviter as cviter
+import lib.track_blobs as trblobs
+import lib.blob_params as blob_params
 import lib.track_corners as trcorners
 import lib.cvutils as cvutils
 import lib.iterutils as iterutils
@@ -79,6 +81,8 @@ def main(args):
 
     ###
     # prep the frames for tracking
+    if args.prep == 'none':
+        trinputA = movieA
     if args.prep == 'gray':
         trinputA = cviter.gray(movieA)
     elif args.prep == 'motion':
@@ -107,34 +111,25 @@ def main(args):
     elif args.tracking == 'contour':
         raise NotImplementedError()
     elif args.tracking == 'blob':
-        params = cv2.SimpleBlobDetector_Params()
-        print(dir(params))
-        params.minThreshold = 10
-        params.maxThreshold = 200
-        #params.filterByArea = True
-        #params.minArea = 1500
-        #params.filterByCircularity = True
-        #params.minCircularity = 0.1
-        #params.filterByConvexity = True
-        #params.minConvexity = 0.87
-        #params.filterByInertia = True
-        #params.minInertiaRatio = 0.01
-
-        detector = cv2.SimpleBlobDetector(params)
-        def trackBlobs(fr, ns):
-            keypoints = detector.detect(fr)
-            print('keypoints:', len(keypoints))
-            assert keypoints
-            cv2.drawKeypoints(fr, keypoints, ns, (0,0,255),
-                    cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
-        disp = cviter.lift(trackBlobs, trinputA,
-                shapefn = lambda fr: fr.shape[:2] + (3,))
+        params = { "filterByConvexity": False
+                 , "filterByCircularity": False
+                 , "filterByInertia": False
+                 , "filterByColor": False
+                 , "filterByArea": True
+                 , "minArea": 50.0
+                 , "maxArea": 250.0
+                 }
+        disp = trblobs.trackBlobs \
+            ( blob_params.mkDetector(params, verbose=True)
+            , movieA # prep methods don't do anything
+            #, debug = 'blobs'
+            )
 
     cviter.displaySink(windowName, disp, ending=True)
 
 sentinel = \
     { 'disable-redetect': -1
-    , 'preparation-choices': {'gray', 'motion', 'bg', 'blur'}
+    , 'preparation-choices': {'gray', 'motion', 'bg', 'blur', 'none'}
     , 'tracking-choices': {'corner', 'blob', 'contour'}
     }
 
@@ -150,6 +145,7 @@ if __name__ == '__main__':
         [ None
         , cviter
         , trcorners
+        , trblobs
         , cvutils
         , iterutils
         , funcutils
@@ -189,6 +185,7 @@ if __name__ == '__main__':
         , default = default['prep']
         , metavar = 'P'
         , help = '''Type of image segmentation preparation to perform on images before tracking.
+            "none" uses raw video images
             "gray" turns them gray;
             "blur" blurs and thresholds gray images;
             "bg" uses a foreground/background model to isolate larva;
@@ -221,6 +218,6 @@ if __name__ == '__main__':
             "corner" tracks corner features with optical-flow;
             (default {deft})'''.format(deft=default['tracking']))
 
-    main(p.parse_args())
+    exit(main(p.parse_args()))
 
 # eof
