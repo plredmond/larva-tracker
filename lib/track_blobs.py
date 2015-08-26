@@ -16,20 +16,6 @@ import numpy
 
 import lib.cviter as cviter
 
-def printProps(obj):
-    for attr in sorted(filter(lambda s: not s.startswith('__'), dir(obj))):
-        print('\t{}: {}'.format(attr, getattr(obj, attr)))
-
-def mkDetector(verbose=True, **kwargs):
-    p = cv2.SimpleBlobDetector_Params()
-    t = {a: type(getattr(p, a)) for a in dir(p) if not a.startswith('__')}
-    for k, v in kwargs.items():
-        assert k in t, '{} must be a property of {}'.format(repr(k), type(p).__name__)
-        assert type(v) == t[k], '{} type must be {}, got a {}, {}'.format(k, t[k].__name__, type(v).__name__, v)
-        setattr(p, k, v)
-    verbose and printProps(p)
-    return cv2.SimpleBlobDetector(p)
-
 # supersillyus
 
 # detect blobs in every frame

@@ -10,6 +10,8 @@ from __future__ import \
 
 import random
 
+import cv2
+
 template = lambda: \
     { 'minRepeatability':(long(0), long(10))
     , 'minThreshold':(0.0, 'maxThreshold')
@@ -32,10 +34,18 @@ template = lambda: \
     , 'maxInertiaRatio':('minInertiaRatio', 1.0)
     }.copy()
 
+### super general
+
+def printProps(obj):
+    for attr in sorted(filter(lambda s: not s.startswith('__'), dir(obj))):
+        print('\t{}: {}'.format(attr, getattr(obj, attr)))
+
 def shuffled(xs_):
     xs = xs_[:]
     random.shuffle(xs)
     return xs
+
+### params helpers
 
 def randIn(lb, ub):
     '''random from [lb, ub) interval'''
@@ -74,7 +84,7 @@ def filterStatus(pd, fks, k):
         return pd['filterBy' + fk]
 filterStatus.fks = lambda pd: [k.replace('filterBy', '') for k, v in pd.items() if isinstance(v, bool)]
 
-####
+### top level
 
 def randParams(params_or_ranges=None):
     pd = template()
@@ -105,7 +115,10 @@ def paramBuckets(bucketCount, params_or_ranges=None):
     return {k: (bucketFn(v[0], v[1]) if isinstance(v, tuple) else const)
             for k, v in pd.items()}
 
-def trainingState(bucketCount, params_or_ranges=None):
+# TODO: 
+# rename fn to smth about index
+# consider moving to train_blobs ?
+def new_index(params_or_ranges=None):
     '''import lib.blob_params as b; print(b.trainingState(0, {"filterByInertia": False, "filterByConvexity": False, "filterByColor":False, "filterByCircularity":False, "filterByArea":False}))'''
     # produce training state arrays
 
@@ -134,9 +147,19 @@ def trainingState(bucketCount, params_or_ranges=None):
                     )
         , sorted \
             ( pd.keys()
-            , key = lambda k: ('_' + k) if keyStatus[k] is None else k ) )
-    print('Training {} parameters across {} buckets: at least {} states'.format(
-        len(index), bucketCount, bucketCount ** len(index)))
-    return index, len(index) * [bucketCount]
+            , key = lambda k: ('_' + k) if keyStatus[k] is None else k
+            )
+        )
+    return index
+
+def mkDetector(paramd, verbose=True):
+    p = cv2.SimpleBlobDetector_Params()
+    t = {a: type(getattr(p, a)) for a in dir(p) if not a.startswith('__')}
+    for k, v in paramd.items():
+        assert k in t, '{} must be a property of {}'.format(repr(k), type(p).__name__)
+        assert type(v) == t[k], '{} type must be {}, got a {}, {}'.format(k, t[k].__name__, type(v).__name__, v)
+        setattr(p, k, v)
+    verbose and printProps(p)
+    return cv2.SimpleBlobDetector(p)
 
 # eof
