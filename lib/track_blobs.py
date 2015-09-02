@@ -10,30 +10,177 @@ from __future__ import \
 
 import collections
 import itertools
+import functools
 
 import cv2
 import numpy
 
+import lib.iterutils as iterutils
 import lib.cviter as cviter
 import lib.blob_params as blob_params
 
-# supersillyus
+Path = collections.namedtuple('Path', 'hist')
 
-# detect blobs in every frame
-# use optical-flow between successive frames to assign new blobs to old blobs
+KeyPoint = cv2.KeyPoint().__class__
+FlowPoint = collections.namedtuple('FlowPoint', 'pt status error')
 
-# t0
-# detect blobs and store
+def new_path(point):
+    assert isinstance(point, KeyPoint)
+    return Path(hist=[point])
 
-# t1
-# detect blobs and store
-# calculate optical flow of frame[t0], frame[t1], blobset[t0]
-# assign blobset[t1] to blobset[t0]
-#   - for status==1 flows
+def path_is_active(path):
+    assert isinstance(path, Path)
+    latest = path.hist[-1]
+    if isinstance(latest, FlowPoint):
+        return latest.status == 1
+    else:
+        return True
 
-#cv2.cvtColor(bim1, cv2.COLOR_GRAY2BGR, ns.annotCur)
+def path_loc(path):
+    assert isinstance(path, Path)
+    assert path_is_active(path)
+    loc = path.hist[-1].pt
+    assert len(loc) == 2
+    return loc
 
-TrackState = collections.namedtuple('TrackState', 'blobHist flowHist annotCur annotHist')
+# FIXME: pay attention to error
+def flow_path(path, pt_status_err):
+    '''return a new Path with the head flowed to the point indicated if ...'''
+    pt, status, err = pt_status_err
+    assert pt.shape == (2,)
+    assert status in {0, 1}
+    assert isinstance(err, numpy.floating)
+    if status == 1:
+        return Path(hist=path.hist[:] + [FlowPoint(pt=pt, status=status, error=err)])
+    else:
+        return path
+
+def anchor_path(path, point):
+    '''return a new path with the point at the end'''
+    assert isinstance(point, KeyPoint)
+    return Path(hist=path.hist[:] + [point])
+
+def new_path_group(detect, ims):
+    (bim0, _), (_, _) = ims
+    return [new_path(kp) for kp in detect(bim0)]
+
+def flow_path_group(pg, ims):
+    '''find updated locations for each path head by optical flow
+       return
+        [(ndarray<2>, 0|1, float)] # for each path, indicate flow-loc, status, and error
+    '''
+    (_, _), (fim0, fim1) = ims
+    fs1 = cv2.calcOpticalFlowPyrLK(fim0, fim1,
+            numpy.array([path_loc(path) for path in pg], numpy.float32))
+    return [(point, status, error)
+            for point, (status,), (error,) in itertools.izip(*fs1)]
+
+def anchor_path_group(pg, detect, ims, match_dist=100):
+    '''match newly detected blobs against path heads (closer than match_dist)
+       return
+        ( [KeyPoint|None] # for each path, indicating the best blob or no match
+        , [KeyPoint] # for each unmatched blob
+        )
+    '''
+    (_, bim1), (_, _) = ims
+
+    # detect new blobs
+    bs1 = detect(bim1)
+
+    # blob locations as a matrix
+    blob_loc = numpy.empty((len(bs1), 2))
+    for B, blob in enumerate(bs1):
+        blob_loc[B,:] = blob.pt
+    del B, blob
+
+    # calculate a table of displacements
+    displacement = numpy.empty((len(pg), len(bs1)))
+    for P, path in enumerate(pg):
+        head = numpy.array(path_loc(path))
+        displacement[P,:] = abs(blob_loc - head).sum(axis=1)
+    del P, path, head
+    del blob_loc
+
+    # generate preferences of paths for blobs
+    paths_prefd = {}
+    for P, path in enumerate(pg):
+        # rank all blobs by proximity; filter those off by match_dist
+        ranking = displacement[P,:].argsort()
+        match_count = (displacement[P,ranking] < match_dist).sum()
+        if match_count:
+            paths_prefd[P] = collections.deque(
+                    itertools.islice(ranking, match_count))
+    del P, path, ranking, match_count
+
+    # gale-shapley
+    path_match = {} # {P: KeyPoint}
+    blob_match = {} # {B: P}
+    def match(P, B):
+        # remove an existing match, if any
+        if blob_match.get(B) is not None:
+            path_match.pop(blob_match.get(B))
+        # set up the new match
+        path_match[P] = bs1[B]
+        blob_match[B] = P
+
+    # continue until all paths with preferences are matched (or no more paths have preferences)
+    pd = lambda d: '\n' + '\n'.join('  %s' % repr(x) for x in sorted(d.items()))
+    gen_unmatched = lambda: paths_prefd.viewkeys() - path_match.viewkeys()
+    unmatched = gen_unmatched()
+    while unmatched:
+        for P in unmatched:
+            # get an ask; remove this path if it has no more
+            B = paths_prefd[P].popleft()
+            if not paths_prefd[P]:
+                paths_prefd.pop(P)
+            # match if the blob is unmatched or this path is a better match
+            if B in blob_match:
+                if displacement[P,B] < displacement[blob_match[B],B]:
+                    match(P, B)
+            else:
+                match(P, B)
+        unmatched = gen_unmatched()
+    del match, pd, gen_unmatched, unmatched, P, B
+
+    return [path_match.get(P) for P, path in enumerate(pg)] \
+         , [blob for B, blob in enumerate(bs1) if B not in blob_match]
+
+def annot(im, path_group):
+    map(functools.partial(annot_point, im), [path.hist[-1] for path in path_group])
+
+def annot_hist(im, path_group):
+    for path in path_group:
+        annot_point(im, path.hist[-1])
+        map(functools.partial(annot_segment, im),
+                iterutils.slidingWindow(2, path.hist))
+
+def annot_point(im, point):
+    if isinstance(point, KeyPoint):
+        cv2.drawKeypoints(im, [point], im, (50,150,0), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+    else:
+        cv2.circle(im, tuple(point.pt), point.error, (255,0,0))
+
+def annot_segment(im, points):
+    p0, p1 = points
+    color = None if isinstance(p0, KeyPoint) and isinstance(p1, KeyPoint) else \
+            (50,50,255) if isinstance(p0, FlowPoint) and isinstance(p1, FlowPoint) else \
+            (25,125,0) if isinstance(p0, KeyPoint) and isinstance(p1, FlowPoint) else \
+            (0,255,255) if isinstance(p0, FlowPoint) and isinstance(p1, KeyPoint) else \
+            None
+    assert color
+    cv2.line(im, tuple(map(int, p0.pt)), tuple(map(int, p1.pt)), color)
+
+TrackState = collections.namedtuple('TrackState', 'paths annotCur annotHist')
+
+# rules return true to identify invalid paths
+on_the_fly_filters = \
+    [ lambda path: len(path.hist) >= 10 and \
+        len(filter(lambda p: isinstance(p, KeyPoint), path.hist)) / len(path.hist) < 0.1
+    ]
+
+def filter_on_the_fly(path_group):
+    return filter(lambda path: not any(f(path) for f in on_the_fly_filters), path_group)
+
 
 def trackBlobs(detector, frames, debug=None):
     '''iter<ndarray<x,y,3>>[, str] -> ...
@@ -53,38 +200,44 @@ def trackBlobs(detector, frames, debug=None):
     flowInput = cviter.buffering(2, cviter.gray(framesB))
 
     # loop
-    for (bim0, bim1), (fim0, fim1) in itertools.izip(blobInput, flowInput):
+    for ims in itertools.izip(blobInput, flowInput):
+        (bim0, bim1), (fim0, fim1) = ims
         # allocate
         if ns is None:
             ns = TrackState \
-                ( blobHist = [detector.detect(bim0)]
-                , flowHist = []
+                ( paths = new_path_group(detector.detect, ims)
                 , annotCur = numpy.empty(bim1.shape[:2] + (3,), bim1.dtype)
                 , annotHist = numpy.empty(bim1.shape[:2] + (3,), bim1.dtype)
                 )
-        ns.blobHist.append(detector.detect(bim1))
-        bs0, bs1 = ns.blobHist[-2:]
-        ps0 = numpy.array([b.pt for b in bs0], numpy.float32)
-        ps1, status, err = cv2.calcOpticalFlowPyrLK(fim0, fim1, ps0)
-        # TODO: store ps0..ps1 somewhere
-        # TODO-LATER: match bs0 to bs1 based on updated location predictions in ps1
+        # flow (update path heads according to how pixels have moved)
+        ns = ns._replace(paths = map(flow_path,
+            ns.paths, flow_path_group(ns.paths, ims)))
+        # anchor (redetect blobs and match them against paths)
+        anchors, blobs = anchor_path_group(ns.paths, detector.detect, ims, match_dist=20)
+        assert len(anchors) == len(ns.paths)
+        ns = ns._replace(paths \
+            = [anchor_path(p, a) if a else p
+                for p, a in zip(ns.paths, anchors)]
+            + [new_path(b) for b in blobs]
+            )
+        del anchors, blobs
+
+        # paths get a "flow" every frame
+        # some paths get a "blob" in addition to a flow
+        ns = ns._replace(paths = filter_on_the_fly(ns.paths))
 
         # annotate current
         numpy.copyto(ns.annotCur, bim1)
-        cv2.drawKeypoints(ns.annotCur, bs1, ns.annotCur, (50,150,0), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
-        for p0, p1 in zip(ps0, ps1):
-            cv2.line(ns.annotCur, tuple(p0), tuple(p1), (0,0,255))
+        annot(ns.annotCur, ns.paths)
 
         # annotate history
-        # TODO: loop to draw lines?
         numpy.copyto(ns.annotHist, bim1)
-        for b in ns.blobHist:
-            cv2.drawKeypoints(ns.annotHist, b, ns.annotHist, (50,150,0), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+        annot_hist(ns.annotHist, ns.paths)
 
         if debug:
             bimdt = cv2.absdiff(bim0, bim1) # [...,None]
             fimdt = cv2.absdiff(fim0, fim1)[...,None]
             cviter._debugWindow(debug, trackBlobs.func_name, [bimdt, fimdt, ns.annotCur, ns.annotHist])
-        yield [ns.annotCur, ns.annotHist]
+        yield ns
 
 # eof

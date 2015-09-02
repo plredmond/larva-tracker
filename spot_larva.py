@@ -28,6 +28,13 @@ import lib.cvutils as cvutils
 import lib.iterutils as iterutils
 import lib.funcutils as funcutils
 
+def blobTracking(stream, debug=None):
+    for tracked in stream:
+        print('path count:', len(tracked.paths))
+#       for path in tracked.paths:
+#           print(', '.join(str(tuple(map(int, point.pt))) for point in path.hist))
+        yield [tracked.annotCur, tracked.annotHist]
+
 def cornerTracking(stream, debug=None):
     ns = None
     for ((_, _, redetect, featureHist), featAnnot, pathAnnot) in stream:
@@ -119,11 +126,11 @@ def main(args):
                  , "minArea": 50.0
                  , "maxArea": 250.0
                  }
-        disp = trblobs.trackBlobs \
+        disp = blobTracking(trblobs.trackBlobs \
             ( blob_params.mkDetector(params, verbose=True)
             , movieA # prep methods don't do anything
             #, debug = 'blobs'
-            )
+            ))
 
     cviter.displaySink(windowName, disp, ending=True)
 
