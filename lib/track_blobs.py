@@ -87,15 +87,12 @@ def anchor_path_group(pg, detect, ims, match_dist=100):
     blob_loc = numpy.empty((len(bs1), 2))
     for B, blob in enumerate(bs1):
         blob_loc[B,:] = blob.pt
-    del B, blob
 
     # calculate a table of displacements
     displacement = numpy.empty((len(pg), len(bs1)))
     for P, path in enumerate(pg):
         head = numpy.array(path_loc(path))
         displacement[P,:] = abs(blob_loc - head).sum(axis=1)
-    del P, path, head
-    del blob_loc
 
     # generate preferences of paths for blobs
     paths_prefd = {}
@@ -106,7 +103,6 @@ def anchor_path_group(pg, detect, ims, match_dist=100):
         if match_count:
             paths_prefd[P] = collections.deque(
                     itertools.islice(ranking, match_count))
-    del P, path, ranking, match_count
 
     # gale-shapley
     path_match = {} # {P: KeyPoint}
@@ -135,7 +131,6 @@ def anchor_path_group(pg, detect, ims, match_dist=100):
             else:
                 match(P, B)
         unmatched = gen_unmatched()
-    del match, gen_unmatched, unmatched, P, B
 
     return [path_match.get(P) for P, path in enumerate(pg)] \
          , [blob for B, blob in enumerate(bs1) if B not in blob_match]
@@ -225,7 +220,6 @@ def trackBlobs \
                 for p, a in zip(ns.paths, anchors)]
             + [new_path(b) for b in blobs]
             )
-        del anchors, blobs
 
         # paths get a "flow" every frame (where status is 1 and error is less than max_flow_err)
         # paths get a "blob" in addition to a flow (when a blob is closer than anchor_match_dist)
