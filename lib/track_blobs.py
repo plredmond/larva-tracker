@@ -19,46 +19,42 @@ import lib.iterutils as iterutils
 import lib.cviter as cviter
 import lib.blob_params as blob_params
 
-Path = collections.namedtuple('Path', 'hist')
-
 KeyPoint = cv2.KeyPoint().__class__
 FlowPoint = collections.namedtuple('FlowPoint', 'pt status error')
 
 def new_path(point):
     assert isinstance(point, KeyPoint)
-    return Path(hist=[point])
+    return [point]
 
 def path_is_active(path):
-    assert isinstance(path, Path)
-    latest = path.hist[-1]
+    assert isinstance(path[0], (KeyPoint, FlowPoint))
+    latest = path[-1]
     if isinstance(latest, FlowPoint):
         return latest.status == 1
     else:
         return True
 
 def path_loc(path):
-    assert isinstance(path, Path)
+    assert isinstance(path[0], (KeyPoint, FlowPoint))
     assert path_is_active(path)
-    loc = path.hist[-1].pt
+    loc = path[-1].pt
     assert len(loc) == 2
     return loc
 
-# FIXME: pay attention to error
 def flow_path(path, pt_status_err, max_err=100):
     '''return a new Path with the head flowed to the point indicated if ...'''
     pt, status, err = pt_status_err
     assert pt.shape == (2,)
     assert status in {0, 1}
     assert isinstance(err, numpy.floating)
-    if status == 1 and err < max_err:
-        return Path(hist=path.hist[:] + [FlowPoint(pt=pt, status=status, error=err)])
-    else:
-        return path
+    return (path[:] + [FlowPoint(pt=pt, status=status, error=err)]) \
+            if status == 1 and err < max_err else \
+            path
 
 def anchor_path(path, point):
     '''return a new path with the point at the end'''
     assert isinstance(point, KeyPoint)
-    return Path(hist=path.hist[:] + [point])
+    return path[:] + [point]
 
 def new_path_group(detect, ims):
     (bim0, _), (_, _) = ims
@@ -124,7 +120,6 @@ def anchor_path_group(pg, detect, ims, match_dist=100):
         blob_match[B] = P
 
     # continue until all paths with preferences are matched (or no more paths have preferences)
-    pd = lambda d: '\n' + '\n'.join('  %s' % repr(x) for x in sorted(d.items()))
     gen_unmatched = lambda: paths_prefd.viewkeys() - path_match.viewkeys()
     unmatched = gen_unmatched()
     while unmatched:
@@ -140,19 +135,19 @@ def anchor_path_group(pg, detect, ims, match_dist=100):
             else:
                 match(P, B)
         unmatched = gen_unmatched()
-    del match, pd, gen_unmatched, unmatched, P, B
+    del match, gen_unmatched, unmatched, P, B
 
     return [path_match.get(P) for P, path in enumerate(pg)] \
          , [blob for B, blob in enumerate(bs1) if B not in blob_match]
 
 def annot(im, path_group):
-    map(functools.partial(annot_point, im), [path.hist[-1] for path in path_group])
+    map(functools.partial(annot_point, im), [path[-1] for path in path_group])
 
 def annot_hist(im, path_group):
     for path in path_group:
-        annot_point(im, path.hist[-1])
+        annot_point(im, path[-1])
         map(functools.partial(annot_segment, im),
-                iterutils.slidingWindow(2, path.hist))
+                iterutils.slidingWindow(2, path))
 
 def annot_point(im, point):
     if isinstance(point, KeyPoint):
@@ -174,8 +169,8 @@ TrackState = collections.namedtuple('TrackState', 'paths annotCur annotHist')
 
 # rules return true to identify invalid paths
 on_the_fly_filters = \
-    [ lambda path: len(path.hist) >= 10 and \
-        len(filter(lambda p: isinstance(p, KeyPoint), path.hist)) / len(path.hist) < 0.1
+    [ lambda path: len(path) >= 10 and \
+        len(filter(lambda p: isinstance(p, KeyPoint), path)) / len(path) < 0.1
     ]
 
 def filter_on_the_fly(path_group):
@@ -188,6 +183,7 @@ def trackBlobs \
         , debug=None
         , anchor_match_dist=100
         , max_flow_err=100
+        , blur_size=5
         ):
     '''iter<ndarray<x,y,3>>[, str] -> ...
     '''
@@ -198,7 +194,7 @@ def trackBlobs \
 
     # blob input can be anything
     blobInput = cviter.buffering(2, cviter.lift \
-        ( lambda fr, denoise: cv2.blur(fr, (5, 5), denoise)
+        ( lambda fr, denoise: cv2.blur(fr, (blur_size, blur_size), denoise)
         , framesA
         ))
 
