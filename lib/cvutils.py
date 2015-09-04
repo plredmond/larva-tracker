@@ -51,7 +51,7 @@ class Capture(collections.namedtuple('Capture', 'source capture')):
         return 'Capture.argtype({})'.format(repr(self.source))
 
 def alphaBlend(fg, bg, dst=None):
-    '''numpy.ndarray<x,y,4>, numpy.ndarray<x,y,4> -> numpy.ndarray<x,y,4>
+    '''numpy.ndarray<y,x,4>, numpy.ndarray<y,x,4> -> numpy.ndarray<y,x,4>
 
        Alpha blend BGRA `fg` onto `bg` in a newly allocated array.
     '''
@@ -72,7 +72,6 @@ def alphaBlend(fg, bg, dst=None):
     dst[..., :3] = (outBGR * 255).round()
     dst[..., 3] = (outA * 255).round()[..., 0]
     return dst
-
 
 def gray2color(src, dst=None):
     return cv2.merge([src, src, src], dst)

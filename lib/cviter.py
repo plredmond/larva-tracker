@@ -135,7 +135,7 @@ def fork(ways, frames, debug=None):
     return itertools.tee(allocating(frames, debug), ways)
 
 def alphaBlended(pairs, debug=None):
-    '''int, iter<(ndarray<x,y,4>, ndarray<x,y,4>)> -> iter<ndarray<x,y,4>>
+    '''int, iter<(ndarray<y,x,4>, ndarray<y,x,4>)> -> iter<ndarray<y,x,4>>
 
        Iterate the result of alpha blending incoming pairs of (foreground, background).
     '''

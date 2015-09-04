@@ -180,7 +180,7 @@ def trackBlobs \
         , max_flow_err=100
         , blur_size=5
         ):
-    '''iter<ndarray<x,y,3>>[, str] -> ...
+    '''iter<ndarray<y,x,3>>[, str] -> ...
     '''
     ns = None
 
