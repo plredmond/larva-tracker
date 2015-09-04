@@ -44,13 +44,13 @@ def path_loc(path):
     return loc
 
 # FIXME: pay attention to error
-def flow_path(path, pt_status_err):
+def flow_path(path, pt_status_err, max_err=100):
     '''return a new Path with the head flowed to the point indicated if ...'''
     pt, status, err = pt_status_err
     assert pt.shape == (2,)
     assert status in {0, 1}
     assert isinstance(err, numpy.floating)
-    if status == 1:
+    if status == 1 and err < max_err:
         return Path(hist=path.hist[:] + [FlowPoint(pt=pt, status=status, error=err)])
     else:
         return path
@@ -156,18 +156,18 @@ def annot_hist(im, path_group):
 
 def annot_point(im, point):
     if isinstance(point, KeyPoint):
-        cv2.drawKeypoints(im, [point], im, (50,150,0), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+        cv2.drawKeypoints(im, [point], im, (25,125,0), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
     else:
-        cv2.circle(im, tuple(point.pt), point.error, (255,0,0))
+        cv2.circle(im, tuple(point.pt), point.error, (50,50,255))
 
 def annot_segment(im, points):
     p0, p1 = points
-    color = None if isinstance(p0, KeyPoint) and isinstance(p1, KeyPoint) else \
-            (50,50,255) if isinstance(p0, FlowPoint) and isinstance(p1, FlowPoint) else \
-            (25,125,0) if isinstance(p0, KeyPoint) and isinstance(p1, FlowPoint) else \
-            (0,255,255) if isinstance(p0, FlowPoint) and isinstance(p1, KeyPoint) else \
-            None
-    assert color
+    color = \
+        { (KeyPoint, KeyPoint): (0, 0, 0) # black
+        , (FlowPoint, FlowPoint): (50,50,255) # deep red
+        , (KeyPoint, FlowPoint): (0,255,255) # light yellow
+        , (FlowPoint, KeyPoint): (25,125,0) # deep green
+        }[type(p0), type(p1)]
     cv2.line(im, tuple(map(int, p0.pt)), tuple(map(int, p1.pt)), color)
 
 TrackState = collections.namedtuple('TrackState', 'paths annotCur annotHist')
@@ -182,7 +182,13 @@ def filter_on_the_fly(path_group):
     return filter(lambda path: not any(f(path) for f in on_the_fly_filters), path_group)
 
 
-def trackBlobs(detector, frames, debug=None):
+def trackBlobs \
+        ( detector
+        , frames
+        , debug=None
+        , anchor_match_dist=100
+        , max_flow_err=100
+        ):
     '''iter<ndarray<x,y,3>>[, str] -> ...
     '''
     ns = None
@@ -210,10 +216,13 @@ def trackBlobs(detector, frames, debug=None):
                 , annotHist = numpy.empty(bim1.shape[:2] + (3,), bim1.dtype)
                 )
         # flow (update path heads according to how pixels have moved)
-        ns = ns._replace(paths = map(flow_path,
-            ns.paths, flow_path_group(ns.paths, ims)))
+        ns = ns._replace(paths = map \
+            ( functools.partial(flow_path, max_err=max_flow_err)
+            , ns.paths, flow_path_group(ns.paths, ims)
+            ))
         # anchor (redetect blobs and match them against paths)
-        anchors, blobs = anchor_path_group(ns.paths, detector.detect, ims, match_dist=20)
+        anchors, blobs = anchor_path_group(ns.paths, detector.detect, ims,
+                match_dist=anchor_match_dist)
         assert len(anchors) == len(ns.paths)
         ns = ns._replace(paths \
             = [anchor_path(p, a) if a else p
@@ -222,8 +231,10 @@ def trackBlobs(detector, frames, debug=None):
             )
         del anchors, blobs
 
-        # paths get a "flow" every frame
-        # some paths get a "blob" in addition to a flow
+        # paths get a "flow" every frame (where status is 1 and error is less than max_flow_err)
+        # paths get a "blob" in addition to a flow (when a blob is closer than anchor_match_dist)
+
+        # then we remove paths which don't fit certain specs
         ns = ns._replace(paths = filter_on_the_fly(ns.paths))
 
         # annotate current
@@ -238,6 +249,6 @@ def trackBlobs(detector, frames, debug=None):
             bimdt = cv2.absdiff(bim0, bim1) # [...,None]
             fimdt = cv2.absdiff(fim0, fim1)[...,None]
             cviter._debugWindow(debug, trackBlobs.func_name, [bimdt, fimdt, ns.annotCur, ns.annotHist])
-        yield ns
+        yield (ns.annotCur, ns.annotHist, ns.paths)
 
 # eof

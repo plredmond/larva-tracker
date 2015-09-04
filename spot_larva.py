@@ -29,11 +29,11 @@ import lib.iterutils as iterutils
 import lib.funcutils as funcutils
 
 def blobTracking(stream, debug=None):
-    for tracked in stream:
-        print('path count:', len(tracked.paths))
+    for (annotCur, annotHist, paths) in stream:
+        print('path count:', len(paths))
 #       for path in tracked.paths:
 #           print(', '.join(str(tuple(map(int, point.pt))) for point in path.hist))
-        yield [tracked.annotCur, tracked.annotHist]
+        yield [annotCur, annotHist]
 
 def cornerTracking(stream, debug=None):
     ns = None
@@ -130,6 +130,8 @@ def main(args):
             ( blob_params.mkDetector(params, verbose=True)
             , movieA # prep methods don't do anything
             #, debug = 'blobs'
+            , anchor_match_dist=20
+            , max_flow_err=20
             ))
 
     cviter.displaySink(windowName, disp, ending=True)
