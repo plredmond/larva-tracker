@@ -9,6 +9,8 @@ from __future__ import \
     , unicode_literals
     )
 
+import time
+
 import cv2
 import numpy
 
@@ -25,19 +27,14 @@ class MouseQuery(object):
             ( self
             , window
             , image
-            , point_count_target = 1
-            , reticle_size = 4
-            , user_annotation = lambda im, xy, pts: None
-            , reticle_color = (0, 0, 255)
-            , big_reticle_color = None
+            , point_count = 1
+            , annot_fn = lambda im, lmb, xy, pts: None
             ):
         self._window = window
         self._image = image
-        self._point_count_target = point_count_target
-        self._reticle_size = reticle_size
-        self._user_annotation = user_annotation
-        self._reticle_color = reticle_color
-        self._big_reticle_color = big_reticle_color
+        self._point_count_target = point_count
+        self._user_annotation = annot_fn
+        # TODO: replace with namedtuple
         self.__dst_image = numpy.empty_like(image)
         self.__mouse_is_down = False
         self.__current_mouse_loc = (0, 0)
@@ -63,21 +60,33 @@ class MouseQuery(object):
 
     def _loop(self):
         while len(self.__points_collected) < self._point_count_target:
-            # blank
             numpy.copyto(self.__dst_image, self._image)
-            # user annotation
-            self._user_annotation(self.__dst_image, self.__current_mouse_loc, self.__points_collected)
-            # reticle
-            x, y = self.__current_mouse_loc
-            if self._big_reticle_color is not None and self.__mouse_is_down:
-                ym, xm = self.__dst_image.shape[:2]
-                cv2.line(self.__dst_image, (0, y), (xm, y), self._big_reticle_color)
-                cv2.line(self.__dst_image, (x, 0), (x, ym), self._big_reticle_color)
-            if self._reticle_color:
-                cv2.line(self.__dst_image, (x - self._reticle_size, y), (x + self._reticle_size, y), self._reticle_color)
-                cv2.line(self.__dst_image, (x, y - self._reticle_size), (x, y + self._reticle_size), self._reticle_color)
-            # display
+            self._user_annotation(self.__dst_image, self.__mouse_is_down, self.__current_mouse_loc, self.__points_collected)
             cv2.imshow(self._window, self.__dst_image)
             if cv2.waitKey(1) == 27:
                 raise ValueError('ESC key')
         return self.__points_collected
+
+pulse_brightness = lambda: int(time.time() * 2) % 2 * 255
+pulse = lambda dst, _, __, ___: (pulse_brightness(),) * (1 if dst.ndim <= 2 else dst.shape[2])
+
+def annotate_box(dst, lmb, xy, pts, color_fn=None):
+    if pts:
+        c = (color_fn or pulse)(dst, lmb, xy, pts)
+        cv2.rectangle(dst, pts[-1], xy, c)
+
+def annotate_quadrants(dst, lmb, xy, pts, color_fn=None):
+    c = (color_fn or pulse)(dst, lmb, xy, pts)
+    ym, xm = dst.shape[:2]
+    x, y = xy
+    cv2.line(dst, (0, y), (xm, y), c)
+    cv2.line(dst, (x, 0), (x, ym), c)
+
+def annotate_reticle(dst, lmb, xy, pts, color_fn=None, size=None):
+    s = 4 if size is None else size
+    c = (color_fn or pulse)(dst, lmb, xy, pts)
+    x, y = xy
+    cv2.line(dst, (x - s, y), (x + s, y), c)
+    cv2.line(dst, (x, y - s), (x, y + s), c)
+
+# eof
