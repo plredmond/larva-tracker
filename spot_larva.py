@@ -32,7 +32,6 @@ penny_diameter_mm = 19.05
 
 def blobTracking(stream, debug=None):
     for (annotCur, annotHist, paths) in stream:
-#       print('path count:', len(paths))
         yield [annotCur, annotHist]
 
 def manual_crop(bounding_box, frames):
@@ -102,6 +101,7 @@ def main(args):
 
     # penny for scale
     # TODO: must print question on the frame somewhere
+    # TODO: pull this paragraph out of main
     with win():
         with mouse.MouseQuery \
                 ( windowName
@@ -110,7 +110,6 @@ def main(args):
                 , annot_fn = annot_bqr
                 ) as loop:
             penny_pts = loop()
-    print('penny_pts', penny_pts)
     x0, x1 = sorted(max(x, 0) for x,_ in penny_pts)
     y0, y1 = sorted(max(y, 0) for _,y in penny_pts)
     penny_result = circles.find_circle \
@@ -132,9 +131,9 @@ def main(args):
     else:
         print('= Penny wasn\'t found')
         exit(1)
-    # TODO: include scale on analysis screen
 
     # petri dish for crop
+    # TODO: pull this paragraph out of main
     petri_result = circles.find_circle \
             ( 10
             , 15.0
@@ -152,8 +151,6 @@ def main(args):
     else:
         print('= Petri dish wasn\'t found')
         exit(1)
-
-    # crop
     petri_cx, petri_cy, petri_r = petri_mean
     petri_bbx = max(0, petri_cx - petri_r)
     petri_bby = max(0, petri_cy - petri_r)
@@ -163,6 +160,8 @@ def main(args):
         )
 
     # track
+    # TODO: push petri dish loc & radius into tracking
+    #       filter paths which are completely outside of the center 50% of the petri dish
     params = { "filterByConvexity": False
              , "filterByCircularity": False
              , "filterByInertia": False
@@ -174,12 +173,12 @@ def main(args):
     disp = blobTracking(trblobs.trackBlobs \
         ( blob_params.mkDetector(params, verbose=True)
         , cropped
-        #, debug = 'blobs'
         , anchor_match_dist=20
         , max_flow_err=20
         , blur_size=4
         ))
 
+    # TODO: include scale on analysis screen somehow
     cviter.displaySink(windowName, disp, ending=True)
 
 sentinel = \
