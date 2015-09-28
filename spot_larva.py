@@ -23,25 +23,10 @@ import cv2
 
 import lib.track_blobs as trblobs
 import lib.blob_params as blob_params
-import lib.track_corners as trcorners
 import lib.mouse as mouse
 import lib.circles as circles
 import lib.cviter as cviter
 import lib.cvutils as cvutils
-import lib.iterutils as iterutils
-import lib.funcutils as funcutils
-
-penny_colors_bgr = numpy.array(
-    [[[ 79, 106, 138]
-    , [ 37,  88, 149]
-    , [ 25,  73, 128]
-    , [115, 121, 178]
-    , [ 49, 108, 184]
-    , [162, 181, 217]
-    , [116, 146, 202]
-    , [ 75, 121, 208]
-    , [ 69, 119, 166]]]
-    , dtype=numpy.uint8)
 
 penny_diameter_mm = 19.05
 
@@ -49,29 +34,6 @@ def blobTracking(stream, debug=None):
     for (annotCur, annotHist, paths) in stream:
 #       print('path count:', len(paths))
         yield [annotCur, annotHist]
-
-def cornerTracking(stream, debug=None):
-    ns = None
-    for ((_, _, redetect, featureHist), featAnnot, pathAnnot) in stream:
-        if ns is None:
-            pass
-
-        if redetect and len(featureHist) > 1:
-            itpArr0, itpArr1 = featureHist[-2:]
-            I0,T,_ = itpArr0.shape
-            I1,_,_ = itpArr1.shape
-            print('Merge {} and {} points and reduce to 10'.format(I0, I1))
-            print(itpArr0[:,T-1,:].shape)
-            print(itpArr1[:,0,:].shape)
-
-        elif redetect:
-            itpArr = featureHist[-1]
-            I,_,_ = itpArr.shape
-            print('Reduce {} points to 10'.format(I))
-            print(itpArr[:,0,:].shape)
-
-        cviter._debugWindow(debug, cornerTracking.func_name, [pathAnnot, featAnnot])
-        yield (pathAnnot, featAnnot)
 
 def manual_crop(bounding_box, frames):
     '''(Int, Int, Int, Int), iter<ndarray> -> iter<ndarray>
@@ -82,24 +44,6 @@ def manual_crop(bounding_box, frames):
     x1 = x0 + width
     y1 = y0 + height
     return itertools.imap(lambda im: im[y0:y1, x0:x1, ...], frames)
-
-def movement_crop(get_movie, apply_mask=True, **kwargs):
-    '''(-> iter<ndarray>)[, bool] -> iter<ndarray>
-
-       Accumulate a movement mask and crop frames according to the bounding box.
-       If `apply_mask`, blank out non-movement pixels.
-    '''
-    moves = cviter.movementMask(get_movie(), **kwargs)
-    (x0, y0), (x1, y1) = moves.bounding_box
-    print('Bounding box (y,x,width,height):', x0, y0, x1 - x0, y1 - y0)
-    mask = moves.roi_fn(moves.mask) if apply_mask else None
-    return cviter.lift \
-        ( lambda fr, ns: \
-            ( ns.fill(0)
-            , cv2.bitwise_and(fr, fr, ns, mask=mask)
-            )
-        , itertools.imap(moves.roi_fn, get_movie())
-        )
 
 def annot_bqr(*args):
     '''a MouseQuery annotator'''
@@ -252,11 +196,8 @@ if __name__ == '__main__':
     doctests = map(lambda m: (m, doctest.testmod(m)),
         [ None
         , cviter
-        , trcorners
         , trblobs
         , cvutils
-        , iterutils
-        , funcutils
         ])
     if any(test.failed for module, test in doctests):
         for module, test in doctests:
