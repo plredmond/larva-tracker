@@ -16,23 +16,38 @@ import functools
 import itertools
 import argparse
 import doctest
+import contextlib
 
 import numpy
 import cv2
 
-import lib.cviter as cviter
 import lib.track_blobs as trblobs
 import lib.blob_params as blob_params
 import lib.track_corners as trcorners
+import lib.mouse as mouse
+import lib.circles as circles
+import lib.cviter as cviter
 import lib.cvutils as cvutils
 import lib.iterutils as iterutils
 import lib.funcutils as funcutils
 
+penny_colors_bgr = numpy.array(
+    [[[ 79, 106, 138]
+    , [ 37,  88, 149]
+    , [ 25,  73, 128]
+    , [115, 121, 178]
+    , [ 49, 108, 184]
+    , [162, 181, 217]
+    , [116, 146, 202]
+    , [ 75, 121, 208]
+    , [ 69, 119, 166]]]
+    , dtype=numpy.uint8)
+
+penny_diameter_mm = 19.05
+
 def blobTracking(stream, debug=None):
     for (annotCur, annotHist, paths) in stream:
-        print('path count:', len(paths))
-#       for path in tracked.paths:
-#           print(', '.join(str(tuple(map(int, point.pt))) for point in path.hist))
+#       print('path count:', len(paths))
         yield [annotCur, annotHist]
 
 def cornerTracking(stream, debug=None):
@@ -58,98 +73,182 @@ def cornerTracking(stream, debug=None):
         cviter._debugWindow(debug, cornerTracking.func_name, [pathAnnot, featAnnot])
         yield (pathAnnot, featAnnot)
 
+def manual_crop(bounding_box, frames):
+    '''(Int, Int, Int, Int), iter<ndarray> -> iter<ndarray>
+
+       Crop frames to the given x, y, width, height.
+    '''
+    x0, y0, width, height = bounding_box
+    x1 = x0 + width
+    y1 = y0 + height
+    return itertools.imap(lambda im: im[y0:y1, x0:x1, ...], frames)
+
+def movement_crop(get_movie, apply_mask=True, **kwargs):
+    '''(-> iter<ndarray>)[, bool] -> iter<ndarray>
+
+       Accumulate a movement mask and crop frames according to the bounding box.
+       If `apply_mask`, blank out non-movement pixels.
+    '''
+    moves = cviter.movementMask(get_movie(), **kwargs)
+    (x0, y0), (x1, y1) = moves.bounding_box
+    print('Bounding box (y,x,width,height):', x0, y0, x1 - x0, y1 - y0)
+    mask = moves.roi_fn(moves.mask) if apply_mask else None
+    return cviter.lift \
+        ( lambda fr, ns: \
+            ( ns.fill(0)
+            , cv2.bitwise_and(fr, fr, ns, mask=mask)
+            )
+        , itertools.imap(moves.roi_fn, get_movie())
+        )
+
+def annot_bqr(*args):
+    '''a MouseQuery annotator'''
+    _, lmb, _, _ = args
+    mouse.annotate_box(*args, color_fn=lambda *_: (0,255,255))
+    if lmb:
+        mouse.annotate_quadrants(*args)
+    mouse.annotate_reticle(*args, color_fn=lambda *_: (0,0,255), size=25)
+
+@contextlib.contextmanager
+def window(name, *args, **kwargs):
+    cv2.namedWindow(name, *args, **kwargs)
+    yield
+    # FIXME: doesn't actually close the window
+    cv2.destroyWindow(name)
+
+def petri_mask(petri_mean, frames, debug=None):
+    petri_cx, petri_cy, petri_r = petri_mean
+    ns = None
+    for fr in frames:
+        if ns is None:
+            ns = \
+                ( numpy.empty_like(fr)
+                , numpy.zeros(fr.shape[:2] + (1,), fr.dtype)
+                # TODO: do we need the extra dim?
+                )
+            cv2.circle(ns[1], (petri_cx, petri_cy), petri_r, 255, -1)
+        out, mask = ns
+        out.fill(0) # out[...] = 0
+        cv2.bitwise_and(fr, fr, out, mask=mask)
+        cviter._debugWindow(debug, petri_mask.func_name, ns)
+        yield out
+
 def main(args):
+
     # print args
     map(lambda s: print('{}: {}'.format(s, getattr(args, s))),
             filter(lambda s: s[0] != '_',
                 sorted(dir(args))))
+    print('= Frame shape:', next(args.movie.duplicate()).shape)
+
+    # window (sink)
     windowName = '{0} - {1}'.format(path.basename(sys.argv[0]), args.movie.source)
-    cue = lambda m: itertools.islice(m, args.drop, None)
+    win = functools.partial(window, windowName, cv2.WINDOW_NORMAL)
 
-    # TODO: find the red penny, measure, erase it
-
-    ###
-    # source the video frames from the raw footage or from the movement mask
-    if args.cam:
-        movie = opencv.Capture.argtype(0)
-    elif args.mask:
-        moves = cviter.movementMask(cue(args.movie.duplicate()))
-        movie = cviter.lift \
-            ( lambda fr, ns: \
-                ( ns.fill(0)
-                , cv2.bitwise_and(fr, fr, ns, mask=moves.roi_fn(moves.mask))
-                )
-            , itertools.imap(moves.roi_fn, cue(args.movie))
+    # movie (source)
+    # TODO: push getting frame info into Capture
+    # TODO: push forking n ways into Capture (since it allocates for every frame anyway)
+    cue = lambda movie, step=1: itertools.islice \
+            ( movie
+            , args.drop
+            , None if args.count is None else args.drop + args.count
+            , step
             )
+    get_movie = lambda **kwargs: cue(args.movie.duplicate(), **kwargs)
+
+    # penny for scale
+    # TODO: must print question on the frame somewhere
+    with win():
+        with mouse.MouseQuery \
+                ( windowName
+                , next(get_movie())
+                , point_count = 2
+                , annot_fn = annot_bqr
+                ) as loop:
+            penny_pts = loop()
+    print('penny_pts', penny_pts)
+    x0, x1 = sorted(max(x, 0) for x,_ in penny_pts)
+    y0, y1 = sorted(max(y, 0) for _,y in penny_pts)
+    penny_result = circles.find_circle \
+            ( 15
+            , 3.25
+            , itertools.imap(lambda im: im[y0:y1, x0:x1, ...], get_movie(step=2))
+            , blur = 8
+            , param2 = 25
+            , minFraction = 0.5
+            , maxFraction = 1.5
+            )
+    if penny_result:
+        penny_pct, penny_mean, penny_std = penny_result
+        if penny_pct < 0.9:
+            print("! Warning: The penny was detected in less than 90% of frames. Try re-running with `-d/--debug penny` to see what's failing.")
+        print('= Mean penny diameter: {}px (standard deviation: {}px)'.format(penny_mean[2] * 2, penny_std[2]))
+        mm_per_px = penny_diameter_mm / (penny_mean[2] * 2)
+        print('= Scale: {} mm/px'.format(mm_per_px))
     else:
-        movie = cue(args.movie)
+        print('= Penny wasn\'t found')
+        exit(1)
+    # TODO: include scale on analysis screen
 
-    movieA, movieB = itertools.tee(movie, 2)
-
-    ###
-    # prep the frames for tracking
-    if args.prep == 'none':
-        trinputA = movieA
-    if args.prep == 'gray':
-        trinputA = cviter.gray(movieA)
-    elif args.prep == 'motion':
-        trinputA = cviter.motion(cviter.gray(movieA))
-    elif args.prep == 'bg':
-        trinputA = itertools.dropwhile(lambda fr: (fr == 0).all(),
-                cviter.fgMask(cviter.gray(movieA)))
-    elif args.prep == 'blur':
-        trinputA = cviter.lift \
-            ( lambda dt, ns: \
-                ( cv2.GaussianBlur(dt, (3, 3), 0, ns)
-                , cv2.threshold(ns, 190, 255, cv2.THRESH_BINARY, ns)
-                )
-            , cviter.gray(movieA)
+    # petri dish for crop
+    petri_result = circles.find_circle \
+            ( 10
+            , 15.0
+            , get_movie(step=2)
+            , blur = 10
+            , param2 = 50
+            , minFraction = 0.8
+            , maxFraction = 1.2
             )
+    if petri_result:
+        petri_pct, petri_mean, petri_std = petri_result
+        if petri_pct < 0.9:
+            print("! Warning: The petri dish was detected in less than 90% of frames. Try re-running with `-d/--debug petri` to see what's failing.")
+        print('= Mean petri dish diameter: {}px (standard deviation: {}px)'.format(petri_mean[2] * 2, petri_std[2]))
+    else:
+        print('= Petri dish wasn\'t found')
+        exit(1)
 
-    ###
-    # track in any way possible
-    if args.tracking == 'corner':
-        # TODO: try different args to goodFeaturesToTrack and calcOpticalFlowPyrLK
-        trackAA = triter.trackCorners(trinputA, redetectInterval=args.redetect if args.redetect != -1 else None)
-        trackAAA, trackAAB, trackAAC = itertools.tee(trackAA, 3)
-        featsAAA = triter.annotateFeatures(itertools.imap(lambda tr: (tr, tr[0]), trackAAA))
-        pathsAAB = triter.annotatePaths(itertools.izip(trackAAB, movieB))
-        disp = cornerTracking(itertools.izip(trackAAC, featsAAA, pathsAAB))
-    elif args.tracking == 'contour':
-        raise NotImplementedError()
-    elif args.tracking == 'blob':
-        params = { "filterByConvexity": False
-                 , "filterByCircularity": False
-                 , "filterByInertia": False
-                 , "filterByColor": False
-                 , "filterByArea": True
-                 , "minArea": 50.0
-                 , "maxArea": 250.0
-                 }
-        disp = blobTracking(trblobs.trackBlobs \
-            ( blob_params.mkDetector(params, verbose=True)
-            , movieA # prep methods don't do anything
-            #, debug = 'blobs'
-            , anchor_match_dist=20
-            , max_flow_err=20
-            ))
+    # crop
+    petri_cx, petri_cy, petri_r = petri_mean
+    petri_bbx = max(0, petri_cx - petri_r)
+    petri_bby = max(0, petri_cy - petri_r)
+    cropped = manual_crop \
+        ( [petri_bbx, petri_bby, 2*petri_r, 2*petri_r]
+        , petri_mask(petri_mean, get_movie())
+        )
+
+    # track
+    params = { "filterByConvexity": False
+             , "filterByCircularity": False
+             , "filterByInertia": False
+             , "filterByColor": False
+             , "filterByArea": True
+             , "minArea": 50.0
+             , "maxArea": 250.0
+             }
+    disp = blobTracking(trblobs.trackBlobs \
+        ( blob_params.mkDetector(params, verbose=True)
+        , cropped
+        #, debug = 'blobs'
+        , anchor_match_dist=20
+        , max_flow_err=20
+        , blur_size=4
+        ))
 
     cviter.displaySink(windowName, disp, ending=True)
 
 sentinel = \
-    { 'disable-redetect': -1
-    , 'preparation-choices': {'gray', 'motion', 'bg', 'blur', 'none'}
-    , 'tracking-choices': {'corner', 'blob', 'contour'}
+    {
     }
 
 default = \
-    { 'redetect': 20
-    , 'drop': 0
-    , 'prep': 'blur'
-    , 'tracking': 'corner'
+    { 'drop': 0
     }
 
 if __name__ == '__main__':
+
+    # test
     doctests = map(lambda m: (m, doctest.testmod(m)),
         [ None
         , cviter
@@ -168,9 +267,8 @@ if __name__ == '__main__':
                 ))
         exit(9)
 
+    # args
     p = argparse.ArgumentParser()
-
-    # movie file
     p.add_argument \
         ( 'movie'
         , type = cvutils.Capture.argtype
@@ -181,52 +279,13 @@ if __name__ == '__main__':
         , metavar = 'D'
         , type = int
         , help = '''Number of frames to drop from the beginning of the analysis. (default {deft})'''.format(deft = default['drop']))
-    # OR cam
     p.add_argument \
-        ( '-c', '--cam'
-        , action = 'store_true'
-        , help = '''If given, ignore the file argument and the unmask argument. Use the computer's webcam instead.''')
-
-    # preproccessing
-    p.add_argument \
-        ( '-p', '--prep'
-        , choices = sentinel['preparation-choices']
-        , default = default['prep']
-        , metavar = 'P'
-        , help = '''Type of image segmentation preparation to perform on images before tracking.
-            "none" uses raw video images
-            "gray" turns them gray;
-            "blur" blurs and thresholds gray images;
-            "bg" uses a foreground/background model to isolate larva;
-            "motion" finds the absolute difference between successive gray images;
-            (default {deft})'''.format(deft=default['prep']))
-    p.add_argument \
-        ( '-u', '--unmask'
-        , action = 'store_false'
-        , dest = 'mask'
-        , help = '''If given, do not produce or utilize the movement mask. The default is to use this mask.''')
-
-    # corner tracking
-    p.add_argument \
-        ( '-r', '--redetect'
-        , default = default['redetect']
-        , metavar = 'I'
+        ( '-c', '--count'
+        , metavar = 'D'
         , type = int
-        , help = '''Interval number of frames to wait before redoing feature selection. (default {deft} frames, use {dis} to disable redetection)'''.format \
-            ( deft = default['redetect']
-            , dis = sentinel['disable-redetect']))
-    # OR other kinds of tracking
-    p.add_argument \
-        ( '-t', '--tracking'
-        , choices = sentinel['tracking-choices']
-        , default = default['tracking']
-        , metavar = 'T'
-        , help = '''Type of tracking to perform on images.
-            "blob" tracks elongated semiconcave blobs;
-            "contour" tracks brightness and color contours filtered by size;
-            "corner" tracks corner features with optical-flow;
-            (default {deft})'''.format(deft=default['tracking']))
+        , help = '''Number of frames to read from the movie file. (default: all)''')
 
+    # main
     exit(main(p.parse_args()))
 
 # eof

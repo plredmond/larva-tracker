@@ -11,12 +11,54 @@ from __future__ import \
 import collections
 import argparse
 import functools
-import timeit
 
 import numpy
 import cv2
 
+PxStats = collections.namedtuple('PxStats', 'min max median mean std')
+
+def pxStats(im):
+    '''ndarray<y,x,d> -> PxStats<ndarray<d>>
+
+       Calculate component-wise statistics over all pixels in the image.
+       std ** 2 == var
+
+       Here's an example using a BGRA image:
+
+       >>> from numpy import *
+       >>> st = pxStats(array \
+               ([[[  0, 255, 102, 255],  \
+                  [  0, 255, 102,  85],  \
+                  [  0,   0,   0,   0]], \
+                 [[  0, 255, 102, 255],  \
+                  [ 41, 153, 163, 142],  \
+                  [102,   0, 255,  85]], \
+                 [[  0, 255, 102, 255],  \
+                  [ 68,  85, 204, 255],  \
+                  [102,   0, 255, 255]]], dtype=uint8))
+       >>> st.min
+       array([0, 0, 0, 0], dtype=uint8)
+       >>> st.max
+       array([102, 255, 255, 255], dtype=uint8)
+       >>> st.median
+       array([   0.,  153.,  102.,  255.])
+       >>> st.mean
+       array([  34.77777778,  139.77777778,  142.77777778,  176.33333333])
+       >>> st.std
+       array([  42.46247436,  112.98650635,   79.14933533,   94.22078091])
+    '''
+    w, h, d = im.shape
+    px = im.reshape([w * h, d])
+    return PxStats \
+        ( min = px.min(axis=0)
+        , max = px.max(axis=0)
+        , median = numpy.median(px, axis=0)
+        , mean = px.mean(axis=0)
+        , std = px.std(axis=0)
+        )
+
 class Capture(collections.namedtuple('Capture', 'source capture')):
+    '''An iterator wrapper for the OpenCV capture type.'''
     __slots__ = ()
     @classmethod
     def argtype(cls, source):
