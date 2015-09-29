@@ -82,30 +82,23 @@ def main(args):
     map(lambda s: print('{}: {}'.format(s, getattr(args, s))),
             filter(lambda s: s[0] != '_',
                 sorted(dir(args))))
-    print('= Frame shape:', next(args.movie.duplicate()).shape)
+    print('= Frame width x height:', args.movie.frame_width, 'x', args.movie.frame_height)
 
     # window (sink)
     windowName = '{0} - {1}'.format(path.basename(sys.argv[0]), args.movie.source)
     win = functools.partial(window, windowName, cv2.WINDOW_NORMAL)
 
     # movie (source)
-    # TODO: push getting frame info into Capture
-    # TODO: push forking n ways into Capture (since it allocates for every frame anyway)
-    cue = lambda movie, step=1: itertools.islice \
-            ( movie
-            , args.drop
-            , None if args.count is None else args.drop + args.count
-            , step
-            )
-    get_movie = lambda **kwargs: cue(args.movie.duplicate(), **kwargs)
+    cue = lambda step=None: args.movie[args.start:args.stop:step]
 
     # penny for scale
     # TODO: must print question on the frame somewhere
+    # TODO: give some evidence that the penny has been detected (eg. extract it from the first frame and place that on the analysis screen)
     # TODO: pull this paragraph out of main
     with win():
         with mouse.MouseQuery \
                 ( windowName
-                , next(get_movie())
+                , next(cue()).image
                 , point_count = 2
                 , annot_fn = annot_bqr
                 ) as loop:
@@ -115,7 +108,7 @@ def main(args):
     penny_result = circles.find_circle \
             ( 15
             , 3.25
-            , itertools.imap(lambda im: im[y0:y1, x0:x1, ...], get_movie(step=2))
+            , itertools.imap(lambda fi: fi.image[y0:y1, x0:x1, ...], cue(step=2))
             , blur = 8
             , param2 = 25
             , minFraction = 0.5
@@ -137,7 +130,7 @@ def main(args):
     petri_result = circles.find_circle \
             ( 10
             , 15.0
-            , get_movie(step=2)
+            , itertools.imap(lambda fi: fi.image, cue(step=2))
             , blur = 10
             , param2 = 50
             , minFraction = 0.8
@@ -154,10 +147,11 @@ def main(args):
     petri_cx, petri_cy, petri_r = petri_mean
     petri_bbx = max(0, petri_cx - petri_r)
     petri_bby = max(0, petri_cy - petri_r)
-    cropped = manual_crop \
+    crop = lambda upstream: manual_crop \
         ( [petri_bbx, petri_bby, 2*petri_r, 2*petri_r]
-        , petri_mask(petri_mean, get_movie())
+        , petri_mask(petri_mean, upstream)
         )
+    cropped = cviter.ttthird(crop, cue())
 
     # track
     # TODO: push petri dish loc & radius into tracking
@@ -179,14 +173,15 @@ def main(args):
         ))
 
     # TODO: include scale on analysis screen somehow
-    cviter.displaySink(windowName, disp, ending=True)
+    with win():
+        cviter.displaySink(windowName, disp, ending=True)
 
 sentinel = \
     {
     }
 
 default = \
-    { 'drop': 0
+    {
     }
 
 if __name__ == '__main__':
@@ -214,16 +209,15 @@ if __name__ == '__main__':
         , type = cvutils.Capture.argtype
         , help = '''The path to the movie file to perform image tracking on.''')
     p.add_argument \
-        ( '-d', '--drop'
-        , default = default['drop']
-        , metavar = 'D'
+        ( '--start'
+        , metavar = 'N'
         , type = int
-        , help = '''Number of frames to drop from the beginning of the analysis. (default {deft})'''.format(deft = default['drop']))
+        , help = '''First frame to perform analysis on. (default: first frame, 0)''')
     p.add_argument \
-        ( '-c', '--count'
-        , metavar = 'D'
+        ( '--stop'
+        , metavar = 'N'
         , type = int
-        , help = '''Number of frames to read from the movie file. (default: all)''')
+        , help = '''Last frame to perform analysis on. (default: last frame, dependent on the video)''')
 
     # main
     exit(main(p.parse_args()))

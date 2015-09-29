@@ -11,6 +11,7 @@ from __future__ import \
 import collections
 import argparse
 import functools
+import itertools
 
 import numpy
 import cv2
@@ -57,40 +58,122 @@ def pxStats(im):
         , std = px.std(axis=0)
         )
 
-class Capture(collections.namedtuple('Capture', 'source capture')):
-    '''An iterator wrapper for the OpenCV capture type.'''
-    __slots__ = ()
-    @classmethod
-    def argtype(cls, source):
-        '''str/int -> Capture
 
-           Construct a Capture from the path/device or give an argument type error.
+class Capture(object):
+
+    def __init__(self, source):
+        '''str/int => Capture
+
+           Construct a Capture object from file-path or device-number.
         '''
-        cap = cv2.VideoCapture(source)
-        if cap.isOpened():
-            return Capture(source, cap)
-        else:
-            raise argparse.ArgumentTypeError('source {0}'.format(source))
+        self.__source = source
+        self.__video_capture = cv2.VideoCapture(source)
+        if not self.__video_capture.isOpened():
+            raise ValueError(source)
+
     def duplicate(self):
         '''-> Capture
 
-           Return a capture of the same path/device, reset to the current frame therin.
+           Return a capture of the same originating file-path or device-number at the current frame therin.
         '''
-        return self.argtype(self.source)
+        return type(self)(self.__source)
+
+    def __getitem__(self, key):
+        '''int -> FrameInfo : Return a frame from this capture.
+           slice -> iter<FrameInfo> : Return a lazy iter over frames from a duplicate of this capture.
+        '''
+        if isinstance(key, int):
+            if 0 <= key < self.frame_count:
+                assert self.capture.set(cv2.cv.CV_CAP_PROP_POS_FRAMES, key), 'able to set capture frame position'
+                fi = self._read_frame_info(self.__video_capture)
+                assert fi is not None, 'resulting frame position produced data'
+                assert fi.index == key, 'resulting frame position is as was expected'
+                return fi
+            else:
+                raise IndexError(key)
+        elif isinstance(key, slice):
+            # TODO: skip directly to key.start with set(cv2.cv.CV_CAP_PROP_POS_FRAMES, key.start)
+            return itertools.islice(iter(self), key.start, key.stop, key.step)
+        else:
+            raise TypeError('cannot index {} by {}: {}'.format(type(self), type(key), key))
+
+    class _Iter(object):
+
+        '''Hygienic iterator implementation for the Capture class.'''
+
+        def __init__(self, video_capture):
+            '''cv2.VideoCapture => CaptureIter'''
+            self.__video_capture = video_capture
+
+        def __iter__(self):
+            return self
+
+        def next(self):
+            '''-> FrameInfo'''
+            fi = Capture._read_frame_info(self.__video_capture)
+            if fi is None:
+                self.__video_capture.release()
+                raise StopIteration
+            else:
+                return fi
+
     def __iter__(self):
-        '''-> iter<numpy.ndarray>'''
-        return self
-    def next(self):
-        '''-> numpy.ndarray'''
-        ret, frame = self.capture.read()
+        '''-> iter<FrameInfo>'''
+        return Capture._Iter(self.duplicate().__video_capture)
+
+    def __repr__(self):
+        return '{.__name__}({})'.format(type(self), repr(self.__source))
+
+    @property
+    def source(self):
+        '''str'''
+        return self.__source
+
+    @property
+    def fps(self):
+        '''float'''
+        return self.__video_capture.get(cv2.cv.CV_CAP_PROP_FPS)
+
+    @property
+    def frame_count(self):
+        '''int'''
+        return int(self.__video_capture.get(cv2.cv.CV_CAP_PROP_FRAME_COUNT))
+
+    @property
+    def frame_height(self):
+        '''int'''
+        return int(self.__video_capture.get(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT))
+
+    @property
+    def frame_width(self):
+        '''int'''
+        return int(self.__video_capture.get(cv2.cv.CV_CAP_PROP_FRAME_WIDTH))
+
+    @classmethod
+    def argtype(cls, source):
+        '''Factory function for argparse'''
+        try:
+            return cls(source)
+        except ValueError:
+            raise argparse.ArgumentTypeError('source {0}'.format(source))
+
+    FrameInfo = collections.namedtuple('FrameInfo', 'index msec image')
+
+    @staticmethod
+    def _read_frame_info(video_capture):
+        '''cv2.VideoCapture -> FrameInfo/None
+
+           Extract info about a frame and advance the given VideoCapture object.
+           Otherwise, return None.
+        '''
+        ret, frame = video_capture.read()
         assert (ret and frame is not None) or (not ret and frame is None), 'ret and frame must agree'
         if ret:
-            return frame
-        else:
-            self.capture.release()
-            raise StopIteration
-    def __repr__(self):
-        return 'Capture.argtype({})'.format(repr(self.source))
+            return Capture.FrameInfo \
+                ( index = int(video_capture.get(cv2.cv.CV_CAP_PROP_POS_FRAMES))
+                , msec = video_capture.get(cv2.cv.CV_CAP_PROP_POS_MSEC)
+                , image = frame
+                )
 
 def alphaBlend(fg, bg, dst=None):
     '''numpy.ndarray<y,x,4>, numpy.ndarray<y,x,4> -> numpy.ndarray<y,x,4>

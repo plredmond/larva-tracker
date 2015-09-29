@@ -174,7 +174,7 @@ def filter_on_the_fly(path_group):
 
 def trackBlobs \
         ( detector
-        , frames
+        , frameinfos
         , debug=None
         , anchor_match_dist=100
         , max_flow_err=100
@@ -185,7 +185,10 @@ def trackBlobs \
     ns = None
 
     # fork
-    framesA, framesB = cviter.fork(2, frames)
+    # FIXME: can't we just use tee here according to the iterator rules in cviter
+    # Below we are buffering these streams, so fork shouldn't be necessary
+#   framesA, framesB = cviter.fork(2, itertools.imap(lambda (idx,ms,image): image, frameinfos))
+    framesA, framesB = itertools.tee(itertools.imap(lambda (idx,ms,image): image, frameinfos))
 
     # blob input can be anything
     blobInput = cviter.buffering(2, cviter.lift \

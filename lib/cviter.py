@@ -7,6 +7,15 @@ from __future__ import \
     , print_function
     , unicode_literals
     )
+'''
+Rules for OpenCV iterators.
+
+    An iter asserts required properties about its inputs on each iteration.
+    An iter allocates workspace only once when it is created or on its first iteration.
+    An iter performs work by copying from inputs to workspace; it never modifies input.
+    An iter yields work by providing a pointer to a portion of its workspace.
+    An iter must not hold references to previous inputs for use in subsequent iterations
+'''
 
 import sys
 import collections
@@ -30,16 +39,14 @@ def _debugWindow(name, itername, arrs, t=1):
         cvutils.imshowSafe(name, arrs)
         cv2.waitKey(t)
 
+# TODO: maybe convert this to an iter that simply yields (arrs, show) or (arrs, key)
 def displaySink(name, stream, t=1, ending=False, quit=27):
     '''str, iter<[ndarray]>[, int] -> None
 
        Consume sequences of images by displaying them left-to-right in a window for `t` ms.
        If `ending` then display the last image indefinitely.
        In either case, return upon receipt of `quit` keycode (default is ESC for me).
-
-       TODO: maybe convert this to an iter that simply yields (arrs, show) or (arrs, key)
     '''
-    cv2.namedWindow(name, cv2.WINDOW_NORMAL)
     for arrs in stream:
         def show(n):
             cvutils.imshowSafe(name, arrs)
@@ -49,12 +56,6 @@ def displaySink(name, stream, t=1, ending=False, quit=27):
     while ending:
         if show(0) == quit:
             return
-
-# an iter asserts required properties about its inputs
-# an iter allocates workspace only once at the beginning
-# an iter performs work by copying from inputs to workspace; it never modifies input
-# an iter yields work by providing a pointer to a portion of its workspace
-# -> an iter must not hold references to previous inputs for use in subsequent iterations
 
 def gray(frames, debug=None):
     '''iter<ndarray>[, str] -> iter<ndarray>
@@ -179,7 +180,7 @@ ffirst  = functools.partial(applyTo, lambda (a,_): a, lambda (_,b),a: (a,b))
 ssecond = functools.partial(applyTo, lambda (_,b): b, lambda (a,_),b: (a,b))
 fffirst  = functools.partial(applyTo, lambda (a,_,__): a, lambda (_,b,c),a: (a,b,c))
 sssecond = functools.partial(applyTo, lambda (_,b,__): b, lambda (a,_,c),b: (a,b,c))
-ttthird  = functools.partial(applyTo, lambda (_,b,__): b, lambda (a,_,c),b: (a,b,c))
+ttthird  = functools.partial(applyTo, lambda (_,__,c): c, lambda (a,b,_),c: (a,b,c))
 
 def lift \
         ( fn
