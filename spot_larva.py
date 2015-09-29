@@ -165,7 +165,7 @@ def main(args):
              , "maxArea": 250.0
              }
     disp = blobTracking(trblobs.trackBlobs \
-        ( blob_params.mkDetector(params, verbose=True)
+        ( blob_params.mkDetector(params)
         , cropped
         , anchor_match_dist=20
         , max_flow_err=20

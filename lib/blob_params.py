@@ -152,7 +152,7 @@ def new_index(params_or_ranges=None):
         )
     return index
 
-def mkDetector(paramd, verbose=True):
+def mkDetector(paramd, verbose=False):
     p = cv2.SimpleBlobDetector_Params()
     t = {a: type(getattr(p, a)) for a in dir(p) if not a.startswith('__')}
     for k, v in paramd.items():
