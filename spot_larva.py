@@ -151,7 +151,12 @@ def main(args):
         ( [petri_bbx, petri_bby, 2*petri_r, 2*petri_r]
         , petri_mask(petri_mean, upstream)
         )
-    cropped = cviter.ttthird(crop, cue())
+    cropped = cviter.applyTo \
+            ( lambda fi: fi.image
+            , lambda fi, im: fi._replace(image=im)
+            , lambda upstream: annot(crop(mask(upstream)))
+            , cue()
+            )
 
     # track
     # TODO: push petri dish loc & radius into tracking
