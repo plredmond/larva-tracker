@@ -36,11 +36,11 @@ def find_circle(min_ct, max_std, *args, **kwargs):
         ct, _ = result.shape
         if ct == 1:
             arrs.append(result)
-        print('> frame %d' % i, end='\r')
+        print('> Frame %d' % i, end='\r')
         sys.stdout.flush()
         # check early termination condition
         if len(arrs) > min_ct and (numpy.concatenate(arrs, axis=0).std(axis=0) < max_std).all():
-            print('> terminating after just %d frames' % i)
+            print('> Found after just %d frames' % i)
             break
     if arrs:
         arr = numpy.concatenate(arrs, axis=0)
