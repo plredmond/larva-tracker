@@ -76,6 +76,60 @@ def petri_mask(petri_mean, frames, debug=None):
         cviter._debugWindow(debug, petri_mask.func_name, ns)
         yield out
 
+def extract_circle(circle_x_y_r, frame_w_h):
+    '''Extract clamped and unclamped bounding boxes for the circle.
+       Convert circle coordinates to clapmed space.
+
+       Return
+        ( ([x, y], [w, h]) # unclamped-bounding-box in frame-space
+        , ([x, y], [w, h]) # clamped-bounding-box in frame-space
+        , [x, y] # unclamped-circle-point in clamped-bounding-box-space
+        )
+
+       >>> from numpy import array
+       >>> flatten = lambda ((xy, wh), (cxy, cwh), cc): [xy, wh, cxy, cwh, cc]
+       >>> xs = lambda r: map(lambda (x,_): x, flatten(r))
+       >>> ys = lambda r: map(lambda (_,y): y, flatten(r))
+       >>> # test the xs
+       >>> xs(extract_circle([1, 0, 2], [4, 0]))
+       [-1, 4, 0, 3, 1]
+       >>> xs(extract_circle([2, 0, 2], [4, 0]))
+       [0, 4, 0, 4, 2]
+       >>> xs(extract_circle([3, 0, 2], [4, 0]))
+       [1, 4, 1, 3, 2]
+       >>> xs(extract_circle([2, 0, 1], [4, 0]))
+       [1, 2, 1, 2, 1]
+       >>> # test the ys
+       >>> ys(extract_circle([0, 1, 2], [0, 4]))
+       [-1, 4, 0, 3, 1]
+       >>> ys(extract_circle([0, 2, 2], [0, 4]))
+       [0, 4, 0, 4, 2]
+       >>> ys(extract_circle([0, 3, 2], [0, 4]))
+       [1, 4, 1, 3, 2]
+       >>> ys(extract_circle([0, 2, 1], [0, 4]))
+       [1, 2, 1, 2, 1]
+    '''
+    clamp = lambda lb, n, ub: numpy.maximum(lb, numpy.minimum(n, ub))
+    c = numpy.array(circle_x_y_r[:2])
+    r = circle_x_y_r[2]
+    fd = numpy.array(frame_w_h)
+    # unclamped-bounding-box in frame-space
+    bb0 = c - r
+    bb1 = c + r
+    bbd = bb1 - bb0
+    # clamped-bounding-box in frame-space
+    cl = lambda n: clamp(0, n, fd)
+    cbb0 = cl(bb0)
+    cbb1 = cl(bb1)
+    cbbd = cbb1 - cbb0
+    # unclamped-circle-point in clamped-bounding-box-space
+    cc = numpy.where(bb0 > 0, r, r + bb0)
+    return \
+        ( (bb0, bbd)
+        , (cbb0, cbbd)
+        , cc
+        )
+
 def main(args):
 
     # print args
@@ -144,13 +198,11 @@ def main(args):
     else:
         print('= Petri dish wasn\'t found')
         exit(1)
-    petri_cx, petri_cy, petri_r = petri_mean
-    petri_bbx = max(0, petri_cx - petri_r)
-    petri_bby = max(0, petri_cy - petri_r)
-    crop = lambda upstream: manual_crop \
-        ( [petri_bbx, petri_bby, 2*petri_r, 2*petri_r]
-        , petri_mask(petri_mean, upstream)
-        )
+
+    _, ((cbbx, cbby), (cbbw, cbbh)), cc = extract_circle(petri_mean, (args.movie.frame_width, args.movie.frame_height))
+
+    mask = functools.partial(petri_mask, petri_mean)
+    crop = functools.partial(manual_crop, [cbbx, cbby, cbbw, cbbh])
     cropped = cviter.applyTo \
             ( lambda fi: fi.image
             , lambda fi, im: fi._replace(image=im)
