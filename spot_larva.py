@@ -111,6 +111,7 @@ def petri_for_crop(frameinfos, debug=None):
             , param2 = 50
             , minFraction = 0.8
             , maxFraction = 1.2
+            , debug = debug == 'petri' and debug
             )
     if result is None:
         print('! Error: Petri dish was not detected.')
@@ -222,6 +223,7 @@ def main(args):
     # petri dish for crop
     upetri, spetri = petri_for_crop(cue(step=3), debug=args.debug)
     _, ((cbbx, cbby), (cbbw, cbbh)), cc = circle_bb(upetri, (args.movie.frame_width, args.movie.frame_height))
+    cupetri = numpy.concatenate((cc, upetri[2:]))
 
     cropped = cviter.applyTo \
             ( lambda fi: fi.image
@@ -233,8 +235,8 @@ def main(args):
             )
 
     # track
-    # TODO: push petri dish loc & radius into tracking
-    #       filter paths which are completely outside of the center 50% of the petri dish
+    cupetri_half = numpy.concatenate((cupetri[:2], 0.5 * cupetri[2:]))
+    flagger = trblobs.gen_flagger(cupetri_half)
     params = { "filterByConvexity": False
              , "filterByCircularity": False
              , "filterByInertia": False
@@ -243,13 +245,18 @@ def main(args):
              , "minArea": 50.0
              , "maxArea": 250.0
              }
-    disp = blobTracking(trblobs.trackBlobs \
-        ( blob_params.mkDetector(params)
-        , cropped
-        , anchor_match_dist=20
-        , max_flow_err=20
-        , blur_size=4
-        ))
+    disp = blobTracking \
+        ( trblobs.trackBlobs \
+            ( blob_params.mkDetector(params)
+            , cupetri_half
+            , lambda path: None if len(path) < 10 else flagger(path)
+            , cropped
+            , anchor_match_dist=20
+            , max_flow_err=20
+            , blur_size=4
+            , debug = args.debug == 'tracking' and args.debug
+            )
+        )
 
     # TODO: include scale on analysis screen somehow
     with win():

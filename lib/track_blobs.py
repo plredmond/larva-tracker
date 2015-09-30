@@ -17,6 +17,7 @@ import numpy
 
 import lib.iterutils as iterutils
 import lib.cviter as cviter
+import lib.circles as circles
 import lib.blob_params as blob_params
 
 KeyPoint = cv2.KeyPoint().__class__
@@ -162,18 +163,30 @@ def annot_segment(im, points):
 
 TrackState = collections.namedtuple('TrackState', 'paths annotCur annotHist')
 
-# rules return true to identify invalid paths
-on_the_fly_filters = \
-    [ lambda path: len(path) >= 10 and \
-        len(filter(lambda p: isinstance(p, KeyPoint), path)) / len(path) < 0.1
-    ]
+euclidean_dist = lambda a, b: numpy.sqrt(((a - b) ** 2).sum())
+manhattan_dist = lambda a, b: (abs(a - b)).sum()
+in_circle = lambda x_y_r, pt, dist=euclidean_dist: dist(x_y_r[:2], pt) <= x_y_r[2]
 
-def filter_on_the_fly(path_group):
-    return filter(lambda path: not any(f(path) for f in on_the_fly_filters), path_group)
-
+def gen_flagger(half_petri_x_y_r):
+    # flaggers :: {str: (Path -> bool)}
+    flaggers = \
+        { 'path is comprised of less than 10% KeyPoints'
+        : lambda path: len(filter(lambda p: isinstance(p, KeyPoint), path)) / len(path) < 0.1
+        , 'path is completely outside of the inner half-radius of the petri dish'
+        # TODO: change to manhattan dist
+        : lambda path: all(not in_circle(half_petri_x_y_r, p.pt) for p in path)
+        }
+    # flag :: Path -> Maybe<str> (either a str or None)
+    def flagger(path):
+        for s,f in flaggers.items():
+            if f(path):
+                return s
+    return flagger
 
 def trackBlobs \
         ( detector
+        , half_petri
+        , otf_flagger
         , frameinfos
         , debug=None
         , anchor_match_dist=100
@@ -226,15 +239,31 @@ def trackBlobs \
         # paths get a "flow" every frame (where status is 1 and error is less than max_flow_err)
         # paths get a "blob" in addition to a flow (when a blob is closer than anchor_match_dist)
 
-        # then we remove paths which don't fit certain specs
-        ns = ns._replace(paths = filter_on_the_fly(ns.paths))
+        # TODO: distinguish between on-the-fly filtering and filtering at the end
+        # eg. 10-long and <10% Keypoints is a good on-the-fly filter
+        #     but at the end of the run, if something is <10% KeyPoints we want to filter it irrespective of length
+        # TODO: also we need to return the filters somehow so we can filter things before analysis
 
+        # TODO: reconsider filtering out paths on the fly vs simply not displaying flagged paths
+        #   - if we filter them, that means less noise during anchoring stage, except during iteration(s) just after a path was filtered
+        #   - if we don't filter them 1) they will continually anchor detected noise (good)
+        #                             2) they may anchor real paths to noise (bad)
+        #                             3) we can display them as ignored paths
+        # Possible solution: 1) don't filter them
+        #                    2) track how many times a path gets flagged
+        #                    3) in anchoring, score paths by the number of times they've been flagged
+
+        ns = ns._replace(paths = filter(lambda path: not otf_flagger(path), ns.paths))
+
+        # TODO: move annotation out of tracking
         # annotate current
         numpy.copyto(ns.annotCur, bim1)
+        cv2.circle(ns.annotCur, tuple(half_petri[:2]), half_petri[2], (128,255,255), 1)
         annot(ns.annotCur, ns.paths)
 
         # annotate history
         numpy.copyto(ns.annotHist, bim1)
+        cv2.circle(ns.annotHist, tuple(half_petri[:2]), half_petri[2], (128,255,255), 1)
         annot_hist(ns.annotHist, ns.paths)
 
         if debug:
