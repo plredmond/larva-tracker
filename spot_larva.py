@@ -97,9 +97,9 @@ def coin_for_scale(window_name, coin_diameter_mm, frameinfos, debug=None):
     # print interesting results
     uc, ud = mean[:2], mean[2] * 2
     sc, sr = std[:2], std[2]
-    print('= Mean coin diameter: {}px (standard deviation: {}px)'.format(ud, sr))
+    print('= Mean coin diameter: {:g}px (standard deviation: {:g}px)'.format(ud, sr))
     mm_per_px = coin_diameter_mm / ud
-    print('= Scale: {} mm/px'.format(mm_per_px))
+    print('= Scale: {:g} mm/px'.format(mm_per_px))
     return mm_per_px, [x0, y0, 0] + mean, std
 
 def petri_for_crop(frameinfos, debug=None):
@@ -126,7 +126,7 @@ def petri_for_crop(frameinfos, debug=None):
     # print interesting results
     uc, ud = mean[:2], mean[2] * 2
     sc, sr = std[:2], std[2]
-    print('= Mean petri dish diameter: {}px (standard deviation: {}px)'.format(ud, sr))
+    print('= Mean petri dish diameter: {:g}px (standard deviation: {:g}px)'.format(ud, sr))
     return mean, std
 
 def mask_circle(circle_x_y_r, frames, debug=None):
@@ -222,6 +222,7 @@ def main(args):
 
     # petri dish for crop
     upetri, spetri = petri_for_crop(cue(step=3), debug=args.debug)
+    print('= Petri dish diameter is {:g}cm'.format(upetri[2] * 2 * mm_per_px / 10))
     _, ((cbbx, cbby), (cbbw, cbbh)), cc = circle_bb(upetri, (args.movie.frame_width, args.movie.frame_height))
     cupetri = numpy.concatenate((cc, upetri[2:]))
 

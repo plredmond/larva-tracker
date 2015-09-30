@@ -197,22 +197,43 @@ def trackBlobs \
     '''
     ns = None
 
-    framesA, framesB = itertools.tee(itertools.imap \
-        ( lambda fi: fi.image
-        , frameinfos
-        ))
+    # fan out input streams
+
+    frameinfosA, \
+    frameinfosB = itertools.tee(frameinfos)
+
+    frameinfosAframesA, \
+    frameinfosAframesB = itertools.tee(itertools.imap(lambda fi: fi.image, frameinfosA))
+
+    # prep input streams
 
     # blob input can be anything
-    blobInput = cviter.buffering(2, cviter.lift \
-        ( lambda fr, denoise: cv2.blur(fr, (blur_size, blur_size), denoise)
-        , framesA
-        ))
+    blobInput = cviter.buffering \
+        ( 2
+        , cviter.lift \
+            ( lambda fr, out: cv2.blur(fr, (blur_size, blur_size), out)
+            , frameinfosAframesA
+            )
+        )
 
     # flow input should be 8-bit
-    flowInput = cviter.buffering(2, cviter.gray(framesB))
+    flowInput = cviter.buffering \
+        ( 2
+        , cviter.gray(frameinfosAframesB)
+        )
 
-    # loop
-    for ims in itertools.izip(blobInput, flowInput):
+    # meta input can't use the image (we don't buffer it)
+    metaInput = iterutils.slidingWindow \
+        ( 2
+        , itertools.imap \
+            ( lambda fi: fi._replace(image=None)
+            , frameinfosB
+            )
+        )
+
+    # loop on joined input streams
+    for meta, ims in itertools.izip(metaInput, itertools.izip(blobInput, flowInput)):
+        # TODO: get rid of the annotation code because it requires destructuring ims
         (bim0, bim1), (fim0, fim1) = ims
         # allocate
         if ns is None:
