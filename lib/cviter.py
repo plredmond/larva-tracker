@@ -39,23 +39,32 @@ def _debugWindow(name, itername, arrs, t=1):
         cvutils.imshowSafe(name, arrs)
         cv2.waitKey(t)
 
-# TODO: maybe convert this to an iter that simply yields (arrs, show) or (arrs, key)
+DisplayResult = collections.namedtuple('DisplayResult', 'fully_consumed result')
 def displaySink(name, stream, t=1, ending=False, quit=27):
-    '''str, iter<[ndarray]>[, int] -> None
+    '''str, iter<([ndarray], any)>[, int] -> None
 
-       Consume sequences of images by displaying them left-to-right in a window for `t` ms.
-       If `ending` then display the last image indefinitely.
-       In either case, return upon receipt of `quit` keycode (default is ESC for me).
+       Consume an iterable of tuples pairing a sequence of images with arbitrary data.
+           Display each sequence of images left-to-right in a window for `t` ms.
+           Preserve the most recent arbitrary data in case of returning.
+
+       If `ending` then display the last image until the `quit` keycode is recieved.
+       Upon receipt of `quit` keycode (default is ESC) return.
+
+       Return DisplayResult \
+        ( fully_consumed :: bool # indicate whether all of the stream data was consumed (False indicating that we terminated early)
+        , data :: any # the most recent arbitrary data from the stream
+        )
     '''
-    for arrs in stream:
+    for arrs, data in stream:
         def show(n):
             cvutils.imshowSafe(name, arrs)
             return cv2.waitKey(n)
         if show(t) == quit:
-            return
+            return DisplayResult(fully_consumed=False, result=data)
     while ending:
         if show(0) == quit:
-            return
+            break
+    return DisplayResult(fully_consumed=True, result=data)
 
 def gray(frames, debug=None):
     '''iter<ndarray>[, str] -> iter<ndarray>

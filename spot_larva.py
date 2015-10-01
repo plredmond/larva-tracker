@@ -28,9 +28,12 @@ import lib.circles as circles
 import lib.cviter as cviter
 import lib.cvutils as cvutils
 
-def blobTracking(stream, debug=None):
-    for (annotCur, annotHist, paths) in stream:
-        yield [annotCur, annotHist]
+def blobTracking(length, stream, debug=None):
+    # TODO: do annotation here instead of trblobs.trackBlobs
+    # TODO: compose the penny into the top left of the frames before they are displayed
+    for i, (annotCur, annotHist, paths) in enumerate(stream):
+        print('> At frame {}/{} tracking {} paths'.format(i, length, len(paths)))
+        yield ([annotCur, annotHist], paths)
 
 def manual_crop(bounding_box, frames):
     '''(Int, Int, Int, Int), iter<ndarray> -> iter<ndarray>
@@ -214,15 +217,19 @@ def main(args):
 
     # movie (source)
     cue = lambda step=None: args.movie[args.beginning:args.ending:step]
+    cue_length = (args.ending or args.movie.frame_count) - (args.beginning or 0)
 
     # coin for scale
     # TODO: must print question on the frame somewhere
-    # TODO: compose the penny into the top left of the frames before they are displayed (in blobTracking)
-    mm_per_px, ucoin, scoin = coin_for_scale(windowName, args.coin_diameter, cue(step=3), debug=args.debug)
+    if args.no_coin:
+        mm_per_px = None
+    else:
+        mm_per_px, ucoin, scoin = coin_for_scale(windowName, args.coin_diameter, cue(step=3), debug=args.debug)
 
     # petri dish for crop
     upetri, spetri = petri_for_crop(cue(step=3), debug=args.debug)
-    print('= Petri dish diameter is {:g}cm'.format(upetri[2] * 2 * mm_per_px / 10))
+    if mm_per_px is not None:
+        print('= Petri dish diameter is {:g}cm'.format(upetri[2] * 2 * mm_per_px / 10))
     _, ((cbbx, cbby), (cbbw, cbbh)), cc = circle_bb(upetri, (args.movie.frame_width, args.movie.frame_height))
     cupetri = numpy.concatenate((cc, upetri[2:]))
 
@@ -247,7 +254,8 @@ def main(args):
              , "maxArea": 250.0
              }
     disp = blobTracking \
-        ( trblobs.trackBlobs \
+        ( cue_length
+        , trblobs.trackBlobs \
             ( blob_params.mkDetector(params)
             , cupetri_half
             , lambda path: None if len(path) < 10 else flagger(path)
@@ -259,9 +267,17 @@ def main(args):
             )
         )
 
-    # TODO: include scale on analysis screen somehow
     with win():
-        cviter.displaySink(windowName, disp, ending=True)
+        raw_result = cviter.displaySink(windowName, disp, ending=False)
+    paths = filter(lambda path: not flagger(path), raw_result.result)
+    print('= Fully consumed' if raw_result.fully_consumed else '= Early termination')
+    print('= {} paths'.format(len(paths)))
+    for p in paths:
+        print \
+            ( '{:g},{:g}'.format(*p[0].pt)
+            , '-{}-nodes->'.format(len(p))
+            , '{:g},{:g}'.format(*p[-1].pt)
+            )
 
 sentinel = \
     {
@@ -313,12 +329,16 @@ if __name__ == '__main__':
         , metavar = 'mm'
         , type = float
         , default = 19.05
-        , help = '''Diameter of the coin in the frame in milimeters. (default: size of a US penny)''')
+        , help = '''Diameter of the coin in the frame in millimeters. (default: size of a US penny)''')
     p.add_argument \
         ( '-d'
         , '--debug'
         , metavar = 'stage'
         , help = '''To debug the system, give the name of a failing stage based on errors or warnings.''')
+    p.add_argument \
+        ( '--no-coin'
+        , action = 'store_true'
+        , help = '''If there is no coin in the movie, give this option to skip scaling the data to millimeters.''')
 
     # main
     exit(main(p.parse_args()))
