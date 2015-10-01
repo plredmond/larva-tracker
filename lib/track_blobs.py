@@ -22,7 +22,7 @@ import lib.blob_params as blob_params
 
 CV2KeyPoint = cv2.KeyPoint().__class__
 BlobPoint = collections.namedtuple('BlobPoint', 'pt keypoint frameinfo')
-FlowPoint = collections.namedtuple('FlowPoint', 'pt status error')
+FlowPoint = collections.namedtuple('FlowPoint', 'pt status error frameinfo')
 
 def new_path(fi, kp):
     assert type(fi).__name__ == 'FrameInfo'
@@ -44,13 +44,14 @@ def path_loc(path):
     assert len(loc) == 2
     return loc
 
-def flow_path(path, pt_status_err, max_err=100):
+def flow_path(fi, path, pt_status_err, max_err=100):
     '''return a new Path with the head flowed to the point indicated if ...'''
     pt, status, err = pt_status_err
+    assert type(fi).__name__ == 'FrameInfo'
     assert pt.shape == (2,)
     assert status in {0, 1}
     assert isinstance(err, numpy.floating)
-    return (path[:] + [FlowPoint(pt=pt, status=status, error=err)]) \
+    return (path[:] + [FlowPoint(pt=pt, status=status, error=err, frameinfo=fi)]) \
             if status == 1 and err < max_err else \
             path
 
@@ -250,7 +251,7 @@ def trackBlobs \
                 )
         # flow (update path heads according to how pixels have moved)
         ns = ns._replace(paths = map \
-            ( functools.partial(flow_path, max_err=max_flow_err)
+            ( functools.partial(flow_path, m1, max_err=max_flow_err)
             , ns.paths, flow_path_group(ns.paths, ti)
             ))
         # anchor (redetect blobs and match them against paths)
