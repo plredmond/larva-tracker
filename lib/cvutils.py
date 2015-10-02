@@ -84,7 +84,7 @@ class Capture(object):
         '''
         if isinstance(key, int):
             if 0 <= key < self.frame_count:
-                assert self.capture.set(cv2.cv.CV_CAP_PROP_POS_FRAMES, key), 'able to set capture frame position'
+                assert self.__video_capture.set(cv2.cv.CV_CAP_PROP_POS_FRAMES, key), 'able to set capture frame position'
                 fi = self._read_frame_info(self.__video_capture)
                 assert fi is not None, 'resulting frame position produced data'
                 assert fi.index == key, 'resulting frame position is as was expected'
@@ -95,7 +95,7 @@ class Capture(object):
             # TODO: skip directly to key.start with set(cv2.cv.CV_CAP_PROP_POS_FRAMES, key.start)
             return itertools.islice(iter(self), key.start, key.stop, key.step)
         else:
-            raise TypeError('cannot index {} by {}: {}'.format(type(self), type(key), key))
+            raise TypeError('cannot index {.__name__} by {.__name__}: {}'.format(type(self), type(key), key))
 
     class _Iter(object):
 
@@ -166,14 +166,18 @@ class Capture(object):
            Extract info about a frame and advance the given VideoCapture object.
            Otherwise, return None.
         '''
+        # fetch information about the currently cue'd frame
+        fi = Capture.FrameInfo \
+            ( index = int(video_capture.get(cv2.cv.CV_CAP_PROP_POS_FRAMES))
+            , msec = video_capture.get(cv2.cv.CV_CAP_PROP_POS_MSEC)
+            , image = None
+            )
+        # read the currently cue'd frame AND cue up the following frame
         ret, frame = video_capture.read()
         assert (ret and frame is not None) or (not ret and frame is None), 'ret and frame must agree'
         if ret:
-            return Capture.FrameInfo \
-                ( index = int(video_capture.get(cv2.cv.CV_CAP_PROP_POS_FRAMES))
-                , msec = video_capture.get(cv2.cv.CV_CAP_PROP_POS_MSEC)
-                , image = frame
-                )
+            return fi._replace(image=frame)
+
 
 def alphaBlend(fg, bg, dst=None):
     '''numpy.ndarray<y,x,4>, numpy.ndarray<y,x,4> -> numpy.ndarray<y,x,4>
