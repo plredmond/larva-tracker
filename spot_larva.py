@@ -28,12 +28,47 @@ import lib.circles as circles
 import lib.cviter as cviter
 import lib.cvutils as cvutils
 
-def blobTracking(length, stream, debug=None):
+def blob_tracking(length, stream, debug=None):
+    # TODO: figure out why the i enumerating over paths is off by 2
+    #   length is the frame count, but i is zero indexed
+    #   stream yields once for each pair of frames
     # TODO: do annotation here instead of trblobs.trackBlobs
     # TODO: compose the penny into the top left of the frames before they are displayed
     for i, (annotCur, annotHist, paths) in enumerate(stream):
         print('> At frame {}/{} tracking {} paths'.format(i, length, len(paths)))
         yield ([annotCur, annotHist], paths)
+
+def blob_analysis(beginning, paths):
+    print('= Path summary')
+    for i, p in enumerate(paths):
+        print \
+            ( i, '\t'
+            , '{:g},{:g}'.format(*p[0].pt)
+            , '-{}-nodes->'.format(len(p))
+            , '{:g},{:g}'.format(*p[-1].pt)
+            )
+    # produce table data
+    # +-----------------------------------------------------------------------------------------------+
+    # | IMG_####.mov                                                                                  |
+    # +-----------------------------------------------+-----------------------------------------------+
+    # | Distance traveled (millimeters)               | Average speed (millimeters/second)            |
+    # +---+----------+----------+----------+----------+---+----------+----------+----------+----------+
+    # | i | T1 = 15" | T2 = 30" | T3 = 45" | T4 = 60" | i | 0" - T1  | T1 - T2  | T2 - T3  | T3 - T4  |
+    # +---+----------+----------+----------+----------+---+----------+----------+----------+----------+
+    # | 0 |          |          |          |          | 0 |          |          |          |          |
+    # | 1 |          |          |          |          | 1 |          |          |          |          |
+    # | 2 |          |          |          |          | 2 |          |          |          |          |
+    for P, path in enumerate(paths):
+        seconds = collections.defaultdict(list)
+        for point in path:
+            seconds[(point.frameinfo.msec - beginning.msec) // 1000].append(point)
+        print(P, '\t', ', '.join('T{:d} has {}'.format(int(k),len(v))
+            for k,v in sorted(seconds.items())))
+        # TODO: when putting this into the xls, for T# w/o data, put as colored-zero or blank
+
+def write_table(table_data):
+    print('table_data', table_data)
+    raise NotImplementedError(write_table)
 
 def manual_crop(bounding_box, frames):
     '''(Int, Int, Int, Int), iter<ndarray> -> iter<ndarray>
@@ -253,7 +288,7 @@ def main(args):
              , "minArea": 50.0
              , "maxArea": 250.0
              }
-    disp = blobTracking \
+    disp = blob_tracking \
         ( cue_length
         , trblobs.trackBlobs \
             ( blob_params.mkDetector(params)
@@ -267,17 +302,22 @@ def main(args):
             )
         )
 
+    # consume the stream & run final analysis
     with win():
-        raw_result = cviter.displaySink(windowName, disp, ending=False)
-    paths = filter(lambda path: not flagger(path), raw_result.result)
-    print('= Fully consumed' if raw_result.fully_consumed else '= Early termination')
+        ret = cviter.displaySink(windowName, disp, ending=False)
+    paths = filter(lambda p: not flagger(p), ret.result)
+    print('= Fully consumed' if ret.fully_consumed else '= Early termination')
     print('= {} paths'.format(len(paths)))
-    for p in paths:
-        print \
-            ( '{:g},{:g}'.format(*p[0].pt)
-            , '-{}-nodes->'.format(len(p))
-            , '{:g},{:g}'.format(*p[-1].pt)
-            )
+
+    # TODO: Consider outputting the raw path data as essential state to a pickle format and then only producing a table once different analysis methods have been concieved
+    table_data = blob_analysis(args.movie[args.beginning or 0], paths)
+
+    if ret.fully_consumed:
+        write_table(table_data)
+    else:
+        print('table_data', table_data)
+
+    return 0 # great success
 
 sentinel = \
     {
