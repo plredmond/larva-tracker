@@ -30,14 +30,19 @@ import lib.cviter as cviter
 import lib.cvutils as cvutils
 import lib.iterutils as iterutils
 
-def blob_tracking(length, stream, debug=None):
+def blob_tracking(filepath, beginning, length, stream, debug=None):
     # TODO: figure out why the i enumerating over paths is off by 2
     #   length is the frame count, but i is zero indexed
     #   stream yields once for each pair of frames
     # TODO: do annotation here instead of trblobs.trackBlobs
     # TODO: compose the penny into the top left of the frames before they are displayed
+    secs = set()
     for i, (annotCur, annotHist, paths) in enumerate(stream):
         print('> At frame {}/{} tracking {} paths'.format(i, length, len(paths)))
+        s = int(max(map(lambda path: path[-1].frameinfo.msec - beginning.msec, paths)) // 1000)
+        if s not in secs:
+            secs.add(s)
+            cv2.imwrite(filepath + '_T{T}-hist.png'.format(T=s), annotHist)
         yield ([annotCur, annotHist], paths)
 
 def split_path(beginning, path):
@@ -61,6 +66,7 @@ def split_path(beginning, path):
 
 def blob_analysis \
         ( filepath
+        , args
         , beginning
         , paths
         , upetri = None
@@ -80,7 +86,7 @@ def blob_analysis \
             , '{:g},{:g}'.format(*p[-1].pt)
             )
 
-    fmt_s = lambda s: None if s is None else ','.join('{:g}'.format(n) for n in s)
+    fmt_s = lambda s: None if s is None else ';'.join('{:g}'.format(n) for n in s)
 
     du_orig = 'px'
     du_name = 'px' if mm_per_px is None else 'mm'
@@ -98,29 +104,35 @@ def blob_analysis \
     # produce global table data
     g_rows = \
         [ ['file', os.path.split(filepath)[1]]
+        , ['args', args]
         , ['{du}/{du_}'.format(du=du_name, du_=du_orig), mm_per_px]
         # +-------+--------------+
         # | file  | IMG_####.mov |
+        # | args  | ...          |
         # | mm/px | #            |
         # +-------+--------------+
 
         , []
 
-        , ['object', 'mean x,y,r ({du_})'.format(du_=du_orig), 'std x,y,r ({du_})'.format(du_=du_orig), 'bb']
-        , ['coin', fmt_s(ucoin), fmt_s(scoin), fmt_s(bbcoin)]
+        , [ 'object'
+          , 'mean x;y;r ({du_})'.format(du_=du_orig)
+          , 'std x;y;r ({du_})'.format(du_=du_orig)
+          , 'bb x0;y0;x1;y1 (px)'
+          ]
+        , ['coin', fmt_s(ucoin), fmt_s(scoin), fmt_s(bbcoin[0] + bbcoin[1])]
         , ['petri dish', fmt_s(upetri), fmt_s(spetri)]
         # +-------+-----------------+----------------+---------------------+
-        # | obj   | mean x,y,r (px) | std x,y,r (px) | bb (x0, x1, y0, y1) |
+        # | obj   | mean x;y;r (px) | std x;y;r (px) | bb x0;y0;x1;y1 (px) |
         # +-------+-----------------+----------------+---------------------+
-        # | coin  | #,#,#           | #,#,#          | #,#,#,#             |
-        # | petri | #,#,#           | #,#,#          | #,#,#,#             |
+        # | coin  | #;#;#           | #;#;#          | #;#;#;#             |
+        # | petri | #;#;#           | #;#;#          | #;#;#;#             |
         # +-------+-----------------+----------------+---------------------+
         ]
     d_rows = \
         [ ['Distance traveled ({du})'.format(du=du_name)]
         , group_header
         # +---+----------+----------+----------+----------+
-        # | Distance traveled (mm)               |
+        # | Distance traveled (mm)                        |
         # +---+----------+----------+----------+----------+
         # | P | T1 = 15" | T2 = 30" | T3 = 45" | T4 = 60" |
         # +---+----------+----------+----------+----------+
@@ -135,10 +147,10 @@ def blob_analysis \
         # +---+----------+----------+----------+----------+
         ]
     b_rows  = \
-        [ ['Time bounds ({tu},{tu})'.format(tu=tu_name)]
+        [ ['Time bounds begin;end ({tu})'.format(tu=tu_name)]
         , group_header
         # +---+----------+----------+----------+----------+
-        # | Time bounds (sec,sec)                |
+        # | Time bounds begin;end (sec)                   |
         # +---+----------+----------+----------+----------+
         # | P | 0" - T1  | T1 - T2  | T2 - T3  | T3 - T4  |
         # +---+----------+----------+----------+----------+
@@ -186,7 +198,7 @@ def blob_analysis \
         # | 2 |          |          |          |          |
         # +---+----------+----------+----------+----------+
         b_rows.append([P] + pad * ['-'] +
-                map(lambda b: fmt_s(map(tu, b)), bounds[:groups]))
+                [fmt_s([tu(b - beginning.msec) for b in bs]) for bs in bounds[:groups]])
 
     return g_rows + [[]] + d_rows + [[]] + s_rows + [[]] + b_rows
 
@@ -265,7 +277,7 @@ def coin_for_scale(window_name, coin_diameter_mm, frameinfos, debug=None):
     print('= Mean coin diameter: {:g}px (standard deviation: {:g}px)'.format(ud, sr))
     mm_per_px = coin_diameter_mm / ud
     print('= Scale: {:g} mm/px'.format(mm_per_px))
-    return mm_per_px, [x0, y0, 0] + mean, std, (x0, x1, y0, y1)
+    return mm_per_px, [x0, y0, 0] + mean, std, pts
 
 def petri_for_crop(frameinfos, debug=None):
     result = circles.find_circle \
@@ -380,6 +392,7 @@ def main(args):
     # movie (source)
     cue = lambda step=None: args.movie[args.beginning:args.ending:step]
     cue_length = (args.ending or args.movie.frame_count) - (args.beginning or 0)
+    first_frame = args.movie[args.beginning or 0]
 
     # coin for scale
     # TODO: must print question on the frame somewhere
@@ -387,6 +400,11 @@ def main(args):
         mm_per_px, ucoin, scoin, bbcoin = None, None, None, None
     else:
         mm_per_px, ucoin, scoin, bbcoin = coin_for_scale(windowName, args.coin_diameter, cue(step=3), debug=args.debug)
+        coindebug = numpy.empty_like(first_frame.image)
+        numpy.copyto(coindebug, first_frame.image)
+        cv2.rectangle(coindebug, bbcoin[0], bbcoin[1], (0,255,255))
+        circles.annot_target(int(ucoin[0]), int(ucoin[1]), int(ucoin[2]), coindebug)
+        cv2.imwrite(args.movie.source + '_coin.png', coindebug)
 
     # petri dish for crop
     upetri, spetri = petri_for_crop(cue(step=3), debug=args.debug)
@@ -416,7 +434,9 @@ def main(args):
              , "maxArea": 250.0
              }
     disp = blob_tracking \
-        ( cue_length
+        ( args.movie.source
+        , first_frame
+        , cue_length
         , trblobs.trackBlobs \
             ( blob_params.mkDetector(params)
             , cupetri_half
@@ -439,7 +459,8 @@ def main(args):
     # TODO: Consider outputting the raw path data as essential state to a pickle format and then only producing a table once different analysis methods have been concieved
     table_data = blob_analysis \
         ( args.movie.source
-        , args.movie[args.beginning or 0]
+        , args
+        , first_frame
         , paths
         , upetri = upetri
         , spetri = spetri
