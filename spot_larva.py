@@ -119,7 +119,7 @@ def blob_analysis \
           , 'std x;y;r ({du_})'.format(du_=du_orig)
           , 'bb x0;y0;x1;y1 (px)'
           ]
-        , ['coin', fmt_s(ucoin), fmt_s(scoin), fmt_s(bbcoin[0] + bbcoin[1])]
+        , ['coin', fmt_s(ucoin), fmt_s(scoin), fmt_s(None if bbcoin is None else (bbcoin[0] + bbcoin[1]))]
         , ['petri dish', fmt_s(upetri), fmt_s(spetri)]
         # +-------+-----------------+----------------+---------------------+
         # | obj   | mean x;y;r (px) | std x;y;r (px) | bb x0;y0;x1;y1 (px) |
@@ -396,15 +396,15 @@ def main(args):
 
     # coin for scale
     # TODO: must print question on the frame somewhere
-    if args.no_coin:
-        mm_per_px, ucoin, scoin, bbcoin = None, None, None, None
-    else:
+    if args.coin:
         mm_per_px, ucoin, scoin, bbcoin = coin_for_scale(windowName, args.coin_diameter, cue(step=3), debug=args.debug)
         coindebug = numpy.empty_like(first_frame.image)
         numpy.copyto(coindebug, first_frame.image)
         cv2.rectangle(coindebug, bbcoin[0], bbcoin[1], (0,255,255))
         circles.annot_target(int(ucoin[0]), int(ucoin[1]), int(ucoin[2]), coindebug)
         cv2.imwrite(args.movie.source + '_coin.png', coindebug)
+    else:
+        mm_per_px, ucoin, scoin, bbcoin = None, None, None, None
 
     # petri dish for crop
     upetri, spetri = petri_for_crop(cue(step=3), debug=args.debug)
@@ -535,7 +535,8 @@ if __name__ == '__main__':
         , help = '''To debug the system, give the name of a failing stage based on errors or warnings.''')
     p.add_argument \
         ( '--no-coin'
-        , action = 'store_true'
+        , dest='coin'
+        , action = 'store_false'
         , help = '''If there is no coin in the movie, give this option to skip scaling the data to millimeters.''')
 
     # main
