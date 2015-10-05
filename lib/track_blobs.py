@@ -20,6 +20,10 @@ import lib.cviter as cviter
 import lib.circles as circles
 import lib.blob_params as blob_params
 
+euclidean_dist = lambda a, b: numpy.sqrt(((a - b) ** 2).sum())
+manhattan_dist = lambda a, b: (abs(a - b)).sum()
+in_circle = lambda x_y_r, pt, dist=euclidean_dist: dist(x_y_r[:2], pt) <= x_y_r[2]
+
 CV2KeyPoint = cv2.KeyPoint().__class__
 BlobPoint = collections.namedtuple('BlobPoint', 'pt keypoint frameinfo')
 FlowPoint = collections.namedtuple('FlowPoint', 'pt status error frameinfo')
@@ -27,9 +31,10 @@ FlowPoint = collections.namedtuple('FlowPoint', 'pt status error frameinfo')
 def new_path(fi, kp):
     assert type(fi).__name__ == 'FrameInfo'
     assert isinstance(kp, CV2KeyPoint)
-    return [BlobPoint(pt=kp.pt, keypoint=kp, frameinfo=fi)]
+    return [BlobPoint(pt=numpy.array(kp.pt), keypoint=kp, frameinfo=fi)]
 
 def path_is_active(path):
+    # paths should only include blobpoints or status=1 flowpoints
     assert isinstance(path[0], (BlobPoint, FlowPoint))
     latest = path[-1]
     if isinstance(latest, FlowPoint):
@@ -43,6 +48,21 @@ def path_loc(path):
     loc = path[-1].pt
     assert len(loc) == 2
     return loc
+
+def path_dist(path, dist=euclidean_dist):
+    # TODO: decide whether we should be including _all_ consecutive displacements
+    consec_disps = [dist(t0.pt, t1.pt) for t0, t1 in iterutils.slidingWindow(2, path)]
+    return numpy.array(consec_disps).sum()
+
+def path_time_bounds(path):
+    begin = path[0].frameinfo.msec
+    end = path[-1].frameinfo.msec
+    assert begin <= end
+    return begin, end
+
+def path_elapsed_time(path):
+    begin, end = path_time_bounds(path)
+    return end - begin
 
 def flow_path(fi, path, pt_status_err, max_err=100):
     '''return a new Path with the head flowed to the point indicated if ...'''
@@ -59,7 +79,7 @@ def anchor_path(path, fi, kp):
     '''return a new path with the point at the end'''
     assert type(fi).__name__ == 'FrameInfo'
     assert isinstance(kp, CV2KeyPoint)
-    return path[:] + [BlobPoint(pt=kp.pt, keypoint=kp, frameinfo=fi)]
+    return path[:] + [BlobPoint(pt=numpy.array(kp.pt), keypoint=kp, frameinfo=fi)]
 
 def new_path_group(detect, ti):
     (m0, _), (bim0, _), (_, _) = ti
@@ -167,10 +187,6 @@ def annot_segment(im, points):
     cv2.line(im, tuple(map(int, p0.pt)), tuple(map(int, p1.pt)), color)
 
 TrackState = collections.namedtuple('TrackState', 'paths annotCur annotHist')
-
-euclidean_dist = lambda a, b: numpy.sqrt(((a - b) ** 2).sum())
-manhattan_dist = lambda a, b: (abs(a - b)).sum()
-in_circle = lambda x_y_r, pt, dist=euclidean_dist: dist(x_y_r[:2], pt) <= x_y_r[2]
 
 def gen_flagger(half_petri_x_y_r):
     # flaggers :: {str: (Path -> bool)}
