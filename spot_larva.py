@@ -11,12 +11,13 @@ from __future__ import \
 
 import sys
 import collections
-import os.path as path
+import os.path
 import functools
 import itertools
 import argparse
 import doctest
 import contextlib
+import csv
 
 import numpy
 import cv2
@@ -27,6 +28,7 @@ import lib.mouse as mouse
 import lib.circles as circles
 import lib.cviter as cviter
 import lib.cvutils as cvutils
+import lib.iterutils as iterutils
 
 def blob_tracking(length, stream, debug=None):
     # TODO: figure out why the i enumerating over paths is off by 2
@@ -38,37 +40,162 @@ def blob_tracking(length, stream, debug=None):
         print('> At frame {}/{} tracking {} paths'.format(i, length, len(paths)))
         yield ([annotCur, annotHist], paths)
 
-def blob_analysis(beginning, paths):
+def split_path(beginning, path):
+    '''FrameInfo, Path -> [Path]
+
+       Split path up by the number of seconds elapsed since the beginning of analysis.
+
+       For each bucketed pathlet, T, prepend the final point from bucket T - 1, if any.
+       (This prevents incorrect time and distance *span* calculations.)
+    '''
+    # bucket points by second since beginning
+    bucket = collections.defaultdict(collections.deque)
+    for point in path:
+        bucket[int((point.frameinfo.msec - beginning.msec) // 1000)].append(point)
+    bucket.default_factory = None
+    # prepend final point of each bucket onto the next bucket
+    for T in sorted(bucket)[1:]: # keys except for 0
+        assert T > 0
+        bucket[T].appendleft(bucket[T - 1][-1])
+    return [bucket[T] for T in sorted(bucket)]
+
+def blob_analysis \
+        ( filepath
+        , beginning
+        , paths
+        , upetri = None
+        , spetri = None
+        , mm_per_px = None
+        , ucoin = None
+        , scoin = None
+        , bbcoin = None
+        ):
     print('= Path summary')
     for i, p in enumerate(paths):
         print \
-            ( i, '\t'
+            ( 'P%d' % i
+            , '\t'
             , '{:g},{:g}'.format(*p[0].pt)
             , '-{}-nodes->'.format(len(p))
             , '{:g},{:g}'.format(*p[-1].pt)
             )
-    # produce table data
-    # +-----------------------------------------------------------------------------------------------+
-    # | IMG_####.mov                                                                                  |
-    # +-----------------------------------------------+-----------------------------------------------+
-    # | Distance traveled (millimeters)               | Average speed (millimeters/second)            |
-    # +---+----------+----------+----------+----------+---+----------+----------+----------+----------+
-    # | i | T1 = 15" | T2 = 30" | T3 = 45" | T4 = 60" | i | 0" - T1  | T1 - T2  | T2 - T3  | T3 - T4  |
-    # +---+----------+----------+----------+----------+---+----------+----------+----------+----------+
-    # | 0 |          |          |          |          | 0 |          |          |          |          |
-    # | 1 |          |          |          |          | 1 |          |          |          |          |
-    # | 2 |          |          |          |          | 2 |          |          |          |          |
-    for P, path in enumerate(paths):
-        seconds = collections.defaultdict(list)
-        for point in path:
-            seconds[(point.frameinfo.msec - beginning.msec) // 1000].append(point)
-        print(P, '\t', ', '.join('T{:d} has {}'.format(int(k),len(v))
-            for k,v in sorted(seconds.items())))
-        # TODO: when putting this into the xls, for T# w/o data, put as colored-zero or blank
 
-def write_table(table_data):
-    print('table_data', table_data)
-    raise NotImplementedError(write_table)
+    fmt_s = lambda s: None if s is None else ','.join('{:g}'.format(n) for n in s)
+
+    du_orig = 'px'
+    du_name = 'px' if mm_per_px is None else 'mm'
+    du_per_px = 1 if mm_per_px is None else mm_per_px
+    du = lambda px: px * du_per_px
+
+    tu_name = 'sec'
+    fastsec_per_sec = 15
+    tu = lambda msec: msec / 1000 * fastsec_per_sec
+
+    groups = 4
+    # | P | T1 = 15" | T2 = 30" | T3 = 45" | T4 = 60" |
+    group_header = [ 'P' ] + ['T{:d} = {:d}"'.format(fastsec, fastsec * fastsec_per_sec) for fastsec in xrange(1, 1 + groups)]
+
+    # produce global table data
+    g_rows = \
+        [ ['file', os.path.split(filepath)[1]]
+        , ['{du}/{du_}'.format(du=du_name, du_=du_orig), mm_per_px]
+        # +-------+--------------+
+        # | file  | IMG_####.mov |
+        # | mm/px | #            |
+        # +-------+--------------+
+
+        , []
+
+        , ['object', 'mean x,y,r ({du_})'.format(du_=du_orig), 'std x,y,r ({du_})'.format(du_=du_orig), 'bb']
+        , ['coin', fmt_s(ucoin), fmt_s(scoin), fmt_s(bbcoin)]
+        , ['petri dish', fmt_s(upetri), fmt_s(spetri)]
+        # +-------+-----------------+----------------+---------------------+
+        # | obj   | mean x,y,r (px) | std x,y,r (px) | bb (x0, x1, y0, y1) |
+        # +-------+-----------------+----------------+---------------------+
+        # | coin  | #,#,#           | #,#,#          | #,#,#,#             |
+        # | petri | #,#,#           | #,#,#          | #,#,#,#             |
+        # +-------+-----------------+----------------+---------------------+
+        ]
+    d_rows = \
+        [ ['Distance traveled ({du})'.format(du=du_name)]
+        , group_header
+        # +---+----------+----------+----------+----------+
+        # | Distance traveled (mm)               |
+        # +---+----------+----------+----------+----------+
+        # | P | T1 = 15" | T2 = 30" | T3 = 45" | T4 = 60" |
+        # +---+----------+----------+----------+----------+
+        ]
+    s_rows = \
+        [ ['Average speed ({du}/{tu})'.format(du=du_name, tu=tu_name)]
+        , group_header
+        # +---+----------+----------+----------+----------+
+        # | Average speed (mm/sec)            |
+        # +---+----------+----------+----------+----------+
+        # | P | 0" - T1  | T1 - T2  | T2 - T3  | T3 - T4  |
+        # +---+----------+----------+----------+----------+
+        ]
+    b_rows  = \
+        [ ['Time bounds ({tu},{tu})'.format(tu=tu_name)]
+        , group_header
+        # +---+----------+----------+----------+----------+
+        # | Time bounds (sec,sec)                |
+        # +---+----------+----------+----------+----------+
+        # | P | 0" - T1  | T1 - T2  | T2 - T3  | T3 - T4  |
+        # +---+----------+----------+----------+----------+
+        ]
+
+    for P, path in enumerate(paths):
+
+        # analyse path
+        pathlets = split_path(beginning, path)
+        bounds = map(trblobs.path_time_bounds, pathlets)
+        time = map(trblobs.path_elapsed_time, pathlets)
+        dist = map(trblobs.path_dist, pathlets)
+
+        # assert correctness by comparing total-path analysis with sum of split-path analysis
+        pbounds = trblobs.path_time_bounds(path)
+        assert abs((pbounds[1] - pbounds[0]) - numpy.array([t1 - t0 for t0, t1 in bounds]).sum()) < 0.0001, \
+                'time described by pathlet bounds must match that of overall bounds: P%d' % P
+        assert abs(trblobs.path_elapsed_time(path) - numpy.array(time).sum()) < 0.0001, \
+                'time described by pathlet must match total elapsed time: P%d' % P
+        assert abs(trblobs.path_dist(path) - numpy.array(dist).sum()) < 0.0001, \
+                'distance described by sumnation must match total distance: P%d' % P
+
+        # produce table data
+        pad = groups - len(pathlets)
+
+        # +---+----------+----------+----------+----------+
+        # | 0 |          |          |          |          |
+        # | 1 |          |          |          |          |
+        # | 2 |          |          |          |          |
+        # +---+----------+----------+----------+----------+
+        d_rows.append([P] + pad * ['-'] +
+                map(du, dist[:groups]))
+
+        # +---+----------+----------+----------+----------+
+        # | 0 |          |          |          |          |
+        # | 1 |          |          |          |          |
+        # | 2 |          |          |          |          |
+        # +---+----------+----------+----------+----------+
+        s_rows.append([P] + pad * ['-'] +
+                [du(d) / tu(dt) for d, dt in zip(dist[:groups], time)])
+
+        # +---+----------+----------+----------+----------+
+        # | 0 |          |          |          |          |
+        # | 1 |          |          |          |          |
+        # | 2 |          |          |          |          |
+        # +---+----------+----------+----------+----------+
+        b_rows.append([P] + pad * ['-'] +
+                map(lambda b: fmt_s(map(tu, b)), bounds[:groups]))
+
+    return g_rows + [[]] + d_rows + [[]] + s_rows + [[]] + b_rows
+
+def write_table(outfile, table_data):
+    with open(outfile, mode='wb') as fd:
+        writer = csv.writer(fd, dialect='excel')
+        for r in table_data:
+            writer.writerow(r)
+    print('csv written:', outfile)
 
 def manual_crop(bounding_box, frames):
     '''(Int, Int, Int, Int), iter<ndarray> -> iter<ndarray>
@@ -138,7 +265,7 @@ def coin_for_scale(window_name, coin_diameter_mm, frameinfos, debug=None):
     print('= Mean coin diameter: {:g}px (standard deviation: {:g}px)'.format(ud, sr))
     mm_per_px = coin_diameter_mm / ud
     print('= Scale: {:g} mm/px'.format(mm_per_px))
-    return mm_per_px, [x0, y0, 0] + mean, std
+    return mm_per_px, [x0, y0, 0] + mean, std, (x0, x1, y0, y1)
 
 def petri_for_crop(frameinfos, debug=None):
     result = circles.find_circle \
@@ -247,7 +374,7 @@ def main(args):
     print('= Frame width x height:', args.movie.frame_width, 'x', args.movie.frame_height)
 
     # window (sink)
-    windowName = '{0} - {1}'.format(path.basename(sys.argv[0]), args.movie.source)
+    windowName = '{0} - {1}'.format(os.path.basename(sys.argv[0]), args.movie.source)
     win = functools.partial(window, windowName, cv2.WINDOW_NORMAL)
 
     # movie (source)
@@ -257,9 +384,9 @@ def main(args):
     # coin for scale
     # TODO: must print question on the frame somewhere
     if args.no_coin:
-        mm_per_px = None
+        mm_per_px, ucoin, scoin, bbcoin = None, None, None, None
     else:
-        mm_per_px, ucoin, scoin = coin_for_scale(windowName, args.coin_diameter, cue(step=3), debug=args.debug)
+        mm_per_px, ucoin, scoin, bbcoin = coin_for_scale(windowName, args.coin_diameter, cue(step=3), debug=args.debug)
 
     # petri dish for crop
     upetri, spetri = petri_for_crop(cue(step=3), debug=args.debug)
@@ -310,10 +437,20 @@ def main(args):
     print('= {} paths'.format(len(paths)))
 
     # TODO: Consider outputting the raw path data as essential state to a pickle format and then only producing a table once different analysis methods have been concieved
-    table_data = blob_analysis(args.movie[args.beginning or 0], paths)
+    table_data = blob_analysis \
+        ( args.movie.source
+        , args.movie[args.beginning or 0]
+        , paths
+        , upetri = upetri
+        , spetri = spetri
+        , mm_per_px = mm_per_px
+        , ucoin = ucoin
+        , scoin = scoin
+        , bbcoin = bbcoin
+        , )
 
     if ret.fully_consumed:
-        write_table(table_data)
+        write_table(args.movie.source + '.csv', table_data)
     else:
         print('table_data', table_data)
 
