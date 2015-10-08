@@ -71,8 +71,9 @@ def flow_path(fi, path, pt_status_err, max_err=100):
     assert pt.shape == (2,)
     assert status in {0, 1}
     assert isinstance(err, numpy.floating)
+    m_disp = manhattan_dist(path[-1].pt, pt_status_err[0])
     return (path[:] + [FlowPoint(pt=pt, status=status, error=err, frameinfo=fi)]) \
-            if status == 1 and err < max_err else \
+            if status == 1 and err < max_err and m_disp < max_err else \
             path
 
 def anchor_path(path, fi, kp):
