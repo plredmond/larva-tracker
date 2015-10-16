@@ -17,10 +17,6 @@ import numpy
 
 import lib.cvutils as cvutils
 
-def renewCap(c):
-    c.capture.release()
-    return c.duplicate()
-
 if __name__ == '__main__':
     m = cvutils.Capture.argtype(sys.argv[1] if sys.argv[1:] else 0)
     w = 'opencv'
@@ -32,15 +28,15 @@ if __name__ == '__main__':
     print('LEFT background model is generated on the fly')
     print('MIDDLE is the difference between background models')
     print('RIGHT background model is being generated from 200 frames of video')
-    for (i, frame) in itertools.izip(range(200), m):
-        bgModelB.apply(frame)
+    for fi in itertools.islice(m, 200):
+        bgModelB.apply(fi.image)
     else:
         print('done generating')
 
     diff = None
-    for frame in renewCap(m):
-        fgMaskA = bgModelA.apply(frame)
-        fgMaskB = bgModelB.apply(frame)
+    for fi in m:
+        fgMaskA = bgModelA.apply(fi.image)
+        fgMaskB = bgModelB.apply(fi.image)
         if diff is None:
             diff = numpy.empty_like(fgMaskA)
         cv2.absdiff(fgMaskA, fgMaskB, diff)
