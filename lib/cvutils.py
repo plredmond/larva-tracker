@@ -12,6 +12,7 @@ import collections
 import argparse
 import functools
 import itertools
+import contextlib
 
 import numpy
 import cv2
@@ -178,6 +179,110 @@ class Capture(object):
         if ret:
             return fi._replace(image=frame)
 
+class WindowMaker(object):
+
+    def __init__(self, name, flags=None, width_height=None):
+        '''str[, int][, (int, int)] -> WindowMaker
+
+           Create a WindowMaker which creates windows with the given flags and
+           (width, height).
+        '''
+        self.__name = name
+        self.__flags = flags
+        if width_height is not None:
+            assert len(width_height) == 2
+        self.__w_h = width_height
+
+    def __enter__(self):
+        cv2.namedWindow(self.__name) if self.__flags is None else \
+        cv2.namedWindow(self.__name, flags=self.__flags)
+        self.__w_h and cv2.resizeWindow(self.__name, *self.__w_h)
+        return WindowMaker._OpenWindow(self.__name, width_height=self.__w_h)
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        cv2.destroyWindow(self.__name)
+
+    class _OpenWindow(object):
+
+        def __init__(self, name, width_height=None):
+            self.__name = name
+            self.__w_h = width_height
+            self.__fb = None
+            self.__sf = None
+
+        # for sized windows
+        def __init2__(self, ims):
+            assert all(im.dtype == ims[0].dtype for im in ims), 'all images must have the same dtype'
+            w, h = self.__w_h
+            self.__fb = numpy.empty([h, w, 3], dtype=ims[0].dtype)
+            self.__sf = self._scale_factor(self._hstack_width_height(ims), (w, h))
+
+        # for sized windows
+        def _hstack_width_height(self, ims):
+            # TODO: document choice of orientation
+            return \
+                ( sum(im.shape[1] for im in ims)
+                , max(im.shape[0] for im in ims)
+                )
+
+        # for sized windows
+        def _scale_factor(self, src_size, dst_size):
+            src_w, src_h = src_size
+            dst_w, dst_h = dst_size
+            # ar = w/h
+            ## ar(landscape) > 1
+            ## ar(portrait) < 1
+            src_ar = src_w / src_h
+            dst_ar = dst_w / dst_h
+            return (dst_h / src_h) if dst_ar > src_ar else \
+                   (dst_w / src_w)
+
+        # for sized windows
+        def _fb_aoi(self, src_size):
+            # TODO: update to facilitate looping over ims to resize them onto fb one at a time
+            # TODO: pull out implicit args, such as fb left side which is currently 0
+            src_w, src_h = src_size
+            return self.__fb \
+                [ 0 : round(src_h * self.__sf)
+                , 0 : round(src_w * self.__sf)
+                ]
+
+        def ims_show(self, ims_, ms=1):
+            ims = [ims_] if type(ims_) == numpy.ndarray else ims_
+
+            if self.__w_h is None:
+                imshowSafe(self.__name, ims)
+            else:
+                (self.__fb is None) and self.__init2__(ims)
+
+                # clear fb
+                self.__fb.fill(0)
+
+                # TODO: resize images onto fb-aoi one at a time (no allocations)
+                src = numpy.hstack(liken(ims))
+                dst = self._fb_aoi(self._hstack_width_height(ims))
+                cv2.resize \
+                    ( src
+                    , dsize = tuple(reversed(dst.shape[:2]))
+                    , dst = dst
+                    , interpolation = cv2.INTER_AREA
+                    )
+
+                # blit fb
+                cv2.imshow(self.__name, self.__fb)
+
+            # TODO: bring the loop that users of ims_show write into this obj somehow
+            return cv2.waitKey(ms)
+
+        def on_mouse(self, callback):
+            if callback is None:
+                on_mouse_wrapper = lambda *_: None
+            else:
+                @functools.wraps(callback)
+                def on_mouse_wrapper(event, x, y, flags, param):
+                    scale = lambda n: int(n / (self.__sf or 1))
+                    return callback(event, scale(x), scale(y), flags, param)
+            cv2.setMouseCallback(self.__name, on_mouse_wrapper)
 
 def alphaBlend(fg, bg, dst=None):
     '''numpy.ndarray<y,x,4>, numpy.ndarray<y,x,4> -> numpy.ndarray<y,x,4>

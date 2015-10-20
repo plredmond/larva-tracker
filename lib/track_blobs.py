@@ -259,6 +259,7 @@ def trackBlobs \
     # loop on joined input streams
     for ti in itertools.izip(metaInput, blobInput, flowInput):
         (m0, m1), (bim0, bim1), (fim0, fim1) = ti
+
         # allocate
         if ns is None:
             ns = TrackState \

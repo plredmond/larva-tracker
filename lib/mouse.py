@@ -25,12 +25,12 @@ class MouseQuery(object):
 
     def __init__ \
             ( self
-            , window
+            , open_window
             , image
             , point_count = 1
             , annot_fn = lambda im, lmb, xy, pts: None
             ):
-        self._window = window
+        self._open_window = open_window
         self._image = image
         self._point_count_target = point_count
         self._user_annotation = annot_fn
@@ -41,13 +41,13 @@ class MouseQuery(object):
         self.__points_collected = []
 
     def __enter__(self):
-        cv2.setMouseCallback(self._window, self._onMouse)
+        self._open_window.on_mouse(self._on_mouse)
         return self._loop
 
     def __exit__(self, exc_type, exc_value, traceback):
-        cv2.setMouseCallback(self._window, lambda *_: None)
+        self._open_window.on_mouse(None)
 
-    def _onMouse(self, event, x, y, flags, param):
+    def _on_mouse(self, event, x, y, flags, param):
         if events[event] == 'EVENT_MOUSEMOVE':
             self.__current_mouse_loc = (x, y)
         elif events[event] == 'EVENT_LBUTTONDOWN':
@@ -62,8 +62,7 @@ class MouseQuery(object):
         while len(self.__points_collected) < self._point_count_target:
             numpy.copyto(self.__dst_image, self._image)
             self._user_annotation(self.__dst_image, self.__mouse_is_down, self.__current_mouse_loc, self.__points_collected)
-            cv2.imshow(self._window, self.__dst_image)
-            if cv2.waitKey(1) == 27:
+            if self._open_window.ims_show(self.__dst_image) == 27:
                 raise ValueError('ESC key')
         return self.__points_collected
 

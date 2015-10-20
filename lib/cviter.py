@@ -40,8 +40,8 @@ def _debugWindow(name, itername, arrs, t=1):
         cv2.waitKey(t)
 
 DisplayResult = collections.namedtuple('DisplayResult', 'fully_consumed result')
-def displaySink(name, stream, t=1, ending=False, quit=27):
-    '''str, iter<([ndarray], any)>[, int] -> None
+def displaySink(open_window, stream, t=1, ending=False, quit=27):
+    '''WindowMaker._OpenWindow, iter<([ndarray], any)>[, int] -> None
 
        Consume an iterable of tuples pairing a sequence of images with arbitrary data.
            Display each sequence of images left-to-right in a window for `t` ms.
@@ -57,7 +57,7 @@ def displaySink(name, stream, t=1, ending=False, quit=27):
     '''
     for arrs, data in stream:
         def show(n):
-            cvutils.imshowSafe(name, arrs)
+            open_window.ims_show(arrs)
             return cv2.waitKey(n)
         if show(t) == quit:
             return DisplayResult(fully_consumed=False, result=data)

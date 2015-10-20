@@ -219,13 +219,6 @@ def manual_crop(bounding_box, frames):
     y1 = y0 + height
     return itertools.imap(lambda im: im[y0:y1, x0:x1, ...], frames)
 
-@contextlib.contextmanager
-def window(name, *args, **kwargs):
-    cv2.namedWindow(name, *args, **kwargs)
-    yield
-    # FIXME: doesn't actually close the window
-    cv2.destroyWindow(name)
-
 def annot_bqr(*args):
     '''a MouseQuery annotator which facilitates the selection of boxes'''
     _, lmb, _, _ = args
@@ -234,20 +227,20 @@ def annot_bqr(*args):
         mouse.annotate_quadrants(*args)
     mouse.annotate_reticle(*args, color_fn=lambda *_: (0,0,255), size=25)
 
-def coin_for_scale(window_name, coin_diameter_mm, frameinfos, debug=None):
+def coin_for_scale(windower, coin_diameter_mm, frameinfos, debug=None):
     # fetch the first frame of video & info
     first = next(frameinfos)
     frameinfos = itertools.chain([first], frameinfos)
     w, h = first.image.shape[:2]
     # query for a general area on the frame
-    with window(window_name, cv2.WINDOW_NORMAL):
+    with windower as window:
         with mouse.MouseQuery \
-                ( window_name
+                ( window
                 , first.image
                 , point_count = 2
                 , annot_fn = annot_bqr
-                ) as loop:
-            pts = loop()
+                ) as query:
+            pts = query()
     x0, x1 = sorted(max(x, 0) for x,_ in pts)
     y0, y1 = sorted(max(y, 0) for _,y in pts)
     # find a circle on that spot of frame
@@ -386,8 +379,12 @@ def main(args):
     print('= Frame width x height:', args.movie.frame_width, 'x', args.movie.frame_height)
 
     # window (sink)
-    windowName = '{0} - {1}'.format(os.path.basename(sys.argv[0]), args.movie.source)
-    win = functools.partial(window, windowName, cv2.WINDOW_NORMAL)
+    wm = cvutils.WindowMaker \
+        ( '{0} - {1}'.format(os.path.basename(sys.argv[0]), args.movie.source)
+        , flags = cv2.WINDOW_NORMAL
+        , width_height = None if args.window_height is None else (int(args.window_height * 4 / 3), args.window_height)
+        )
+
 
     # movie (source)
     cue = lambda step=None: args.movie[args.beginning:args.ending:step]
@@ -397,7 +394,7 @@ def main(args):
     # coin for scale
     # TODO: must print question on the frame somewhere
     if args.coin:
-        mm_per_px, ucoin, scoin, bbcoin = coin_for_scale(windowName, args.coin_diameter, cue(step=3), debug=args.debug)
+        mm_per_px, ucoin, scoin, bbcoin = coin_for_scale(wm, args.coin_diameter, cue(step=3), debug=args.debug)
         coindebug = numpy.empty_like(first_frame.image)
         numpy.copyto(coindebug, first_frame.image)
         cv2.rectangle(coindebug, bbcoin[0], bbcoin[1], (0,255,255))
@@ -450,8 +447,8 @@ def main(args):
         )
 
     # consume the stream & run final analysis
-    with win():
-        ret = cviter.displaySink(windowName, disp, ending=False)
+    with wm as w:
+        ret = cviter.displaySink(w, disp, ending=False)
     paths = filter(lambda p: not flagger(p), ret.result)
     print('= Fully consumed' if ret.fully_consumed else '= Early termination')
     print('= {} paths'.format(len(paths)))
@@ -538,6 +535,12 @@ if __name__ == '__main__':
         , dest='coin'
         , action = 'store_false'
         , help = '''If there is no coin in the movie, give this option to skip scaling the data to millimeters.''')
+    p.add_argument \
+        ( '-wh'
+        , '--window-height'
+        , metavar = 'px'
+        , type = int
+        , help = '''Resize the window to a 4:3 landscape with this height. Default behavior is operating system dependent (Linux fits the screen, OSX doesn't).''')
 
     # main
     exit(main(p.parse_args()))
