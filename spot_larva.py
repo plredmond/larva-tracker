@@ -209,15 +209,6 @@ def write_table(outfile, table_data):
             writer.writerow(r)
     print('csv written:', outfile)
 
-def manual_crop(bounding_box, frames):
-    '''(Int, Int, Int, Int), iter<ndarray> -> iter<ndarray>
-
-       Crop frames to the given x, y, width, height.
-    '''
-    x0, y0, width, height = bounding_box
-    x1 = x0 + width
-    y1 = y0 + height
-    return itertools.imap(lambda im: im[y0:y1, x0:x1, ...], frames)
 
 def annot_bqr(*args):
     '''a MouseQuery annotator which facilitates the selection of boxes'''
@@ -227,77 +218,180 @@ def annot_bqr(*args):
         mouse.annotate_quadrants(*args)
     mouse.annotate_reticle(*args, color_fn=lambda *_: (0,0,255), size=25)
 
-def coin_for_scale(windower, coin_diameter_mm, frameinfos, debug=None):
-    # fetch the first frame of video & info
-    first = next(frameinfos)
-    frameinfos = itertools.chain([first], frameinfos)
-    w, h = first.image.shape[:2]
-    # query for a general area on the frame
-    with windower as window:
-        with mouse.MouseQuery \
-                ( window
-                , first.image
-                , point_count = 2
-                , annot_fn = annot_bqr
-                ) as query:
-            pts = query()
-    x0, x1 = sorted(max(x, 0) for x,_ in pts)
-    y0, y1 = sorted(max(y, 0) for _,y in pts)
-    # find a circle on that spot of frame
-    result = circles.find_circle \
-            ( 15
-            , 3.25
-            , itertools.imap(lambda fi: fi.image[y0:y1, x0:x1, ...], frameinfos)
-            , blur = 8
-            , param2 = 25
-            , minFraction = 0.5
-            , maxFraction = 1.5
-            , debug = debug == 'coin' and debug
-            )
-    if result is None:
-        print('! Error: Coin was not detected.')
-        print('!    Try re-running with `-d/--debug coin` to see what is failing.')
-        return
-    pct, mean, std = result
-    if pct < 0.9:
-        print('! Warning: Coin was detected in less than 90% of frames.')
-        print('!    Try re-running with `-d/--debug coin` to see what is failing.')
-    # TODO: add a warning case for high standard deviation
-    # TODO: combine this with the very similar paragraph in petri_for_crop
-    # print interesting results
-    uc, ud = mean[:2], mean[2] * 2
-    sc, sr = std[:2], std[2]
-    print('= Mean coin diameter: {:g}px (standard deviation: {:g}px)'.format(ud, sr))
-    mm_per_px = coin_diameter_mm / ud
-    print('= Scale: {:g} mm/px'.format(mm_per_px))
-    return mm_per_px, [x0, y0, 0] + mean, std, pts
 
-def petri_for_crop(frameinfos, debug=None):
-    result = circles.find_circle \
-            ( 10
-            , 15.0
-            , itertools.imap(lambda fi: fi.image, frameinfos)
-            , blur = 10
-            , param2 = 50
-            , minFraction = 0.8
-            , maxFraction = 1.2
-            , debug = debug == 'petri' and debug
+class QueryAOI(object):
+
+    @classmethod
+    def manual_crop(cls, x_y_w_h, raw_frames):
+        '''tup4<num>, iter<numpy.array> -> iter<numpy.array>
+
+           Crop a stream of frames to a bounding-box.
+        '''
+        x0, y0, width, height = x_y_w_h
+        x1 = x0 + width
+        y1 = y0 + height
+        aoi = cls.aoi_shaped((y0, y1, x0, x1))
+        return cls.apply_aoi(aoi, raw_frames)
+
+    @classmethod
+    def main(cls, filepath, codeword, windower, raw_frames, cached=False):
+        '''str, str, WindowMaker, iter<numpy.array>[, bool] -> tup4<num>, iter<numpy.array>
+
+           Load the AOI for `codeword` from the cache for `filepath` or fall back querying the user.
+           Crop the stream of frames.
+        '''
+        # TODO: add a question for the user to the screen "Click to draw a box around {codeword}."
+        if cached:
+            # read cache or ask user, conditionally save cache
+            aoiM = cls.query_aoi_cache(filepath, codeword)
+            if aoiM is None:
+                aoi_frames = cls.ask_for_aoi(windower, raw_frames)
+                cls.save_aoi_cache(filepath, codeword, aoi_frames[0])
+                return aoi_frames
+            else:
+                return aoiM, cls.apply_aoi(aoiM, raw_frames)
+        else:
+            return cls.ask_for_aoi(windower, raw_frames)
+
+    @classmethod
+    def ask_for_aoi(cls, windower, raw_frames):
+        '''WindowMaker, iter<numpy.array> -> tup4<num>, iter<numpy.array>
+
+           Query the user for their area of interest. Return it and a stream of cropped frames.
+        '''
+        first = next(raw_frames)
+        frames = itertools.chain([first], raw_frames)
+        # query for a general area on the frame
+        with windower as ow:
+            with mouse.MouseQuery \
+                    ( ow
+                    , first
+                    , point_count = 2
+                    , annot_fn = annot_bqr
+                    ) as query:
+                pts = query()
+        x0, x1 = sorted(max(x, 0) for x,_ in pts)
+        y0, y1 = sorted(max(y, 0) for _,y in pts)
+        aoi = cls.aoi_shaped((y0, y1, x0, x1))
+        return aoi, cls.apply_aoi(aoi, frames)
+
+    @classmethod
+    def query_aoi_cache(cls, filepath, codeword):
+        '''str, str -> maybe<tup4<num>>'''
+        try:
+            with open(cls.aoi_cache_name(filepath, codeword), 'rb') as npy:
+                print('hit',cls.aoi_cache_name(filepath, codeword))
+                return cls.aoi_shaped(numpy.load(npy)) # Cache hit, return $ Just aoi
+        except IOError as e:
+            if e.errno == 2:
+                print('miss')
+                return # Cache miss, return Nothing
+            else:
+                raise e # Bug, re-raise
+
+    @classmethod
+    def save_aoi_cache(cls, filepath, codeword, aoi):
+        '''str, str, tup4<num> -> None'''
+        with open(cls.aoi_cache_name(filepath, codeword), 'wb') as npy:
+            numpy.save(npy, cls.aoi_shaped(aoi))
+
+    @staticmethod
+    def aoi_cache_name(filepath, codeword):
+        '''str, str -> str'''
+        return '{}_{}.npy'.format(filepath, codeword)
+
+    @staticmethod
+    def apply_aoi(aoi, raw_frames):
+        '''tup4<num>, iter<numpy.array> -> iter<numpy.array>'''
+        y0, y1, x0, x1 = aoi
+        return itertools.imap(lambda im: im[y0:y1, x0:x1, ...], raw_frames)
+
+    @staticmethod
+    def aoi_shaped(aoi):
+        '''tup4<num> -> tup4<num>'''
+        y0, y1, x0, x1 = aoi
+        assert x0 >= 0 and x0 <= x1
+        assert y0 >= 0 and y0 <= y1
+        return aoi
+
+
+class CircleForScale(object):
+
+    @staticmethod
+    def main(codeword, frames, min_ct, max_std, circle_iter_kwargs, diameter_mm=None, debug=None):
+        '''... -> maybe<(ndarray<3>, ndarray<3>, maybe<float>)>
+
+           Attempt to detect a circle in the stream of frames.
+
+           When no circle is detected, return None.
+           Otherwise, return (mean_x_y_radius, std_x_y_radius, mm_per_px).
+           * The `mm_per_px` result is only included when `diameter_mm` is given.
+        '''
+        if diameter_mm is not None:
+            assert diameter_mm > 0
+
+        circleM = circles.find_circle \
+            ( min_ct
+            , max_std
+            , frames
+            , debug = debug == codeword and debug
+            , **circle_iter_kwargs
             )
-    if result is None:
-        print('! Error: Petri dish was not detected.')
-        print('!    Try re-running with `-d/--debug petri` to see what is failing.')
-        return
-    pct, mean, std = result
-    if pct < 0.9:
-        print('! Warning: Petri dish was detected in less than 90% of frames.')
-        print('!    Try re-running with `-d/--debug petri` to see what is failing.')
-    # TODO: add a warning case for high standard deviation
-    # TODO: combine this with the very similar paragraph in coin_for_scale
-    # print interesting results
-    uc, ud = mean[:2], mean[2] * 2
-    sc, sr = std[:2], std[2]
-    print('= Mean petri dish diameter: {:g}px (standard deviation: {:g}px)'.format(ud, sr))
-    return mean, std
+
+        if circleM is None:
+            print('! Error: No %s was not detected.' % codeword.title())
+            print('!    Try re-running with `-d/--debug %s` to see what is failing.' % codeword)
+            return
+        else:
+            pct, mean, std = circleM
+            mean_ctr, mean_rad = mean[:2], mean[2]
+            std_ctr,   std_rad =  std[:2],  std[2]
+            mean_diam = 2 * mean_rad
+            std_diam  = 2 *  std_rad
+
+        if pct < 0.9:
+            print('! Warning: %s was detected in less than 90% of frames.' % codeword.title())
+            print('!    Try re-running with `-d/--debug %s` to see what is failing.' % codeword)
+
+        if std_rad >= 0.1 * mean_rad:
+            print('! Warning: %s radius standard deviation is >= 10% of radius mean.' % codeword.title())
+            print('!    Try re-running with `-d/--debug %s` to see what is failing.' % codeword)
+
+        if diameter_mm is None:
+            scale = 1
+            unit = 'px'
+        else:
+            mm_per_px = diameter_mm / mean_diam
+            print('= Scale from {}: {:g} mm/px'.format(codeword, mm_per_px))
+            scale = mm_per_px
+            unit = 'mm'
+
+        print('= Mean {} diameter: {:g}{u} (standard deviation: {:g}{u})'.
+            format(codeword, mean_diam * scale, std_diam * scale, u=unit))
+
+        return (mean, std, mm_per_px if diameter_mm else None)
+
+    @staticmethod
+    def debug_image(src, pts, mean, expand=4):
+        dst = src.copy()
+        cv2.rectangle(dst, pts[0], pts[1], (0,255,255))
+        circles.annot_target(int(mean[0]), int(mean[1]), int(mean[2]), dst)
+        return dst
+
+
+# images : iter<frameinfo> -> iter<numpy.array>
+images = functools.partial(itertools.imap, lambda fi: fi.image)
+
+
+def applyto_images(frameinfos, fn):
+    '''iter<FrameInfo>, [iter<numpy.array> -> iter<numpy.array>] -> iter<FrameInfo>'''
+    return cviter.applyTo \
+        ( lambda fi: fi.image
+        , lambda fi, im: fi._replace(image=im)
+        , fn # functools.partial(itertools.imap, fn)
+        , frameinfos
+        )
+
 
 def mask_circle(circle_x_y_r, frames, debug=None):
     c = tuple(circle_x_y_r[:2])
@@ -315,6 +409,7 @@ def mask_circle(circle_x_y_r, frames, debug=None):
         cv2.bitwise_and(fr, fr, out, mask=mask)
         cviter._debugWindow(debug, mask_circle.func_name, ns)
         yield out
+
 
 def circle_bb(circle_x_y_r, frame_w_h):
     '''Extract clamped and unclamped bounding boxes for the circle.
@@ -370,6 +465,58 @@ def circle_bb(circle_x_y_r, frame_w_h):
         , cc
         )
 
+
+def main_coin(pathroot, windower, coin_diameter_mm, frameinfos, debug=None):
+    codeword = 'coin'
+    coin_aoi, \
+    coin_frames = QueryAOI.main \
+        ( pathroot
+        , codeword
+        , windower
+        , images(frameinfos)
+        , cached = False
+        )
+    # TODO: make magic #s in terms of resolution?
+    coin_result = CircleForScale.main \
+        ( codeword
+        , coin_frames
+        , 15   # min_ct
+        , 3.25 # max_std
+        , dict \
+            ( blur = 8
+            , param2 = 25
+            , minFraction = 0.5
+            , maxFraction = 1.5
+            ) # circle_iter_kwargs
+        , diameter_mm = coin_diameter_mm
+        , debug = debug
+        )
+    assert coin_result, 'A coin must be detected.'
+    # when unpacking coin-result, keep in mind that it's relative to coin_aoi
+    y0, y1, x0, x1 = coin_aoi
+    coin_mean, coin_std, mm_per_px = coin_result
+    return mm_per_px, [x0, y0, 0] + coin_mean, coin_std, ((x0, y0), (x1, y1))
+
+def main_petri_dish(petri_diameter_mm, frameinfos, debug=None):
+    petri_result = CircleForScale.main \
+        ( 'petri'
+        , images(frameinfos)
+        , 10   # min_ct
+        , 15.0 # max_std
+        , dict \
+            ( blur = 10
+            , param2 = 50
+            , minFraction = 0.8
+            , maxFraction = 1.2
+            ) # circle_iter_kwargs
+        , diameter_mm = petri_diameter_mm
+        , debug = debug
+        )
+    assert petri_result, 'A petri dish must be detected.'
+    petri_mean, petri_std, mm_per_px = petri_result
+    return mm_per_px, petri_mean, petri_std
+
+
 def main(args):
 
     # print args
@@ -378,15 +525,14 @@ def main(args):
                 sorted(dir(args))))
     print('= Frame width x height:', args.movie.frame_width, 'x', args.movie.frame_height)
 
-    # window (sink)
-    wm = cvutils.WindowMaker \
+    source_pathroot, _ = os.path.splitext(args.movie.source)
+
+    window_maker = cvutils.WindowMaker \
         ( '{0} - {1}'.format(os.path.basename(sys.argv[0]), args.movie.source)
         , flags = cv2.WINDOW_NORMAL
         , width_height = None if args.window_height is None else (int(args.window_height * 4 / 3), args.window_height)
         )
 
-
-    # movie (source)
     cue = lambda step=None: args.movie[args.beginning:args.ending:step]
     cue_length = (args.ending or args.movie.frame_count) - (args.beginning or 0)
     first_frame = args.movie[args.beginning or 0]
@@ -394,30 +540,28 @@ def main(args):
     # coin for scale
     # TODO: must print question on the frame somewhere
     if args.coin:
-        mm_per_px, ucoin, scoin, bbcoin = coin_for_scale(wm, args.coin_diameter, cue(step=3), debug=args.debug)
-        coindebug = numpy.empty_like(first_frame.image)
-        numpy.copyto(coindebug, first_frame.image)
-        cv2.rectangle(coindebug, bbcoin[0], bbcoin[1], (0,255,255))
-        circles.annot_target(int(ucoin[0]), int(ucoin[1]), int(ucoin[2]), coindebug)
-        cv2.imwrite(args.movie.source + '_coin.png', coindebug)
+        mm_per_px_coin, ucoin, scoin, bbcoin = main_coin(source_pathroot, window_maker, args.coin_diameter, cue(step=3), debug=args.debug)
+        cv2.imwrite('{}_{}.png'.format(source_pathroot, 'coin'), CircleForScale.debug_image(first_frame.image, bbcoin, ucoin))
     else:
-        mm_per_px, ucoin, scoin, bbcoin = None, None, None, None
+        mm_per_px_coin, ucoin, scoin, bbcoin = None, None, None, None
 
     # petri dish for crop
-    upetri, spetri = petri_for_crop(cue(step=3), debug=args.debug)
-    if mm_per_px is not None:
-        print('= Petri dish diameter is {:g}cm'.format(upetri[2] * 2 * mm_per_px / 10))
+    mm_per_px_petri, upetri, spetri = main_petri_dish(args.petri_dish_diameter, cue(step=3), debug=args.debug)
+
+    mm_per_px = (mm_per_px_coin + mm_per_px_petri) / 2
+    print('= Average scale {:g} mm/px'.format(mm_per_px))
+
     _, ((cbbx, cbby), (cbbw, cbbh)), cc = circle_bb(upetri, (args.movie.frame_width, args.movie.frame_height))
     cupetri = numpy.concatenate((cc, upetri[2:]))
 
-    cropped = cviter.applyTo \
-            ( lambda fi: fi.image
-            , lambda fi, im: fi._replace(image=im)
+    croppedA, croppedB = itertools.tee \
+        ( applyto_images \
+            ( cue()
             , lambda upstream: \
-                    manual_crop([cbbx, cbby, cbbw, cbbh],
-                        mask_circle(upetri, upstream))
-            , cue()
+                QueryAOI.manual_crop([cbbx, cbby, cbbw, cbbh],
+                    mask_circle(upetri, upstream))
             )
+        )
 
     # track
     cupetri_half = numpy.concatenate((cupetri[:2], 0.5 * cupetri[2:]))
@@ -447,8 +591,8 @@ def main(args):
         )
 
     # consume the stream & run final analysis
-    with wm as w:
-        ret = cviter.displaySink(w, disp, ending=False)
+    with window_maker as window:
+        ret = cviter.displaySink(window, disp, ending=False)
     paths = filter(lambda p: not flagger(p), ret.result)
     print('= Fully consumed' if ret.fully_consumed else '= Early termination')
     print('= {} paths'.format(len(paths)))
@@ -525,6 +669,13 @@ if __name__ == '__main__':
         , type = float
         , default = 19.05
         , help = '''Diameter of the coin in the frame in millimeters. (default: size of a US penny)''')
+    p.add_argument \
+        ( '-p'
+        , '--petri-dish-diameter'
+        , metavar = 'mm'
+        , type = float
+        , default = 15 * 10
+        , help = '''Diameter of the petri dish in the frame in millimeters. (default: 15mm)''')
     p.add_argument \
         ( '-d'
         , '--debug'
