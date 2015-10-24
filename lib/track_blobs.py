@@ -187,7 +187,7 @@ def annot_segment(im, points):
         }[type(p0), type(p1)]
     cv2.line(im, tuple(map(int, p0.pt)), tuple(map(int, p1.pt)), color)
 
-TrackState = collections.namedtuple('TrackState', 'paths annotCur annotHist')
+TrackState = collections.namedtuple('TrackState', 'paths debug')
 
 def gen_flagger(half_petri_x_y_r):
     # flaggers :: {str: (Path -> bool)}
@@ -264,58 +264,48 @@ def trackBlobs \
         if ns is None:
             ns = TrackState \
                 ( paths = new_path_group(detector.detect, ti)
-                , annotCur = numpy.empty(bim1.shape[:2] + (3,), bim1.dtype)
-                , annotHist = numpy.empty(bim1.shape[:2] + (3,), bim1.dtype)
+                , debug = debug and \
+                    ( numpy.empty(bim1.shape[:2] + (3,), bim1.dtype)
+                    , numpy.empty(bim1.shape[:2] + (3,), bim1.dtype)
+                    )
                 )
+
         # flow (update path heads according to how pixels have moved)
         ns = ns._replace(paths = map \
             ( functools.partial(flow_path, m1, max_err=max_flow_err)
             , ns.paths, flow_path_group(ns.paths, ti)
             ))
+
         # anchor (redetect blobs and match them against paths)
         anchors, blobs = anchor_path_group(ns.paths, detector.detect, ti,
                 match_dist=anchor_match_dist)
         assert len(anchors) == len(ns.paths)
+
+        # paths get a "flow" every frame (where status is 1 and both error & displacement are LT max_flow_error)
+        # paths get a "blob" in addition to a flow (when a blob is closer than anchor_match_dist)
         ns = ns._replace(paths \
             = [anchor_path(p, m1, a) if a else p
                 for p, a in zip(ns.paths, anchors)]
             + [new_path(m1, b) for b in blobs]
             )
 
-        # paths get a "flow" every frame (where status is 1 and error is less than max_flow_err)
-        # paths get a "blob" in addition to a flow (when a blob is closer than anchor_match_dist)
-
-        # TODO: distinguish between on-the-fly filtering and filtering at the end
-        # eg. 10-long and <10% Keypoints is a good on-the-fly filter
-        #     but at the end of the run, if something is <10% KeyPoints we want to filter it irrespective of length
-        # TODO: also we need to return the filters somehow so we can filter things before analysis
-
-        # TODO: reconsider filtering out paths on the fly vs simply not displaying flagged paths
-        #   - if we filter them, that means less noise during anchoring stage, except during iteration(s) just after a path was filtered
-        #   - if we don't filter them 1) they will continually anchor detected noise (good)
-        #                             2) they may anchor real paths to noise (bad)
-        #                             3) we can display them as ignored paths
-        # Possible solution: 1) don't filter them
-        #                    2) track how many times a path gets flagged
-        #                    3) in anchoring, score paths by the number of times they've been flagged
-
+        # filter paths
         ns = ns._replace(paths = filter(lambda path: not otf_flagger(path), ns.paths))
 
-        # TODO: move annotation out of tracking
-        # annotate current
-        numpy.copyto(ns.annotCur, bim1)
-        cv2.circle(ns.annotCur, tuple(half_petri[:2]), half_petri[2], (128,255,255), 1)
-        annot(ns.annotCur, ns.paths)
-
-        # annotate history
-        numpy.copyto(ns.annotHist, bim1)
-        cv2.circle(ns.annotHist, tuple(half_petri[:2]), half_petri[2], (128,255,255), 1)
-        annot_hist(ns.annotHist, ns.paths)
-
         if debug:
-            bimdt = cv2.absdiff(bim0, bim1) # [...,None]
-            fimdt = cv2.absdiff(fim0, fim1)[...,None]
-            cviter._debugWindow(debug, trackBlobs.func_name, [bimdt, fimdt, ns.annotCur, ns.annotHist])
-        yield (ns.annotCur, ns.annotHist, ns.paths)
+            debugCur, debugHist = ns.debug
+            # annotate current
+            numpy.copyto(debugCur, bim1)
+            cv2.circle(debugCur, tuple(half_petri[:2]), half_petri[2], (128,255,255), 1)
+            annot(debugCur, ns.paths)
+            # annotate history
+            numpy.copyto(debugHist, bim1)
+            cv2.circle(debugHist, tuple(half_petri[:2]), half_petri[2], (128,255,255), 1)
+            annot_hist(debugHist, ns.paths)
+            # annotate differences in frames
+            bimdt = cv2.absdiff(bim0, bim1)
+            fimdt = cv2.absdiff(fim0, fim1)[...,None] # add extra dim for liken'd debug window
+            cviter._debugWindow(debug, trackBlobs.func_name, [bimdt, fimdt, debugCur, debugHist])
+        yield ns.paths
 
 # eof

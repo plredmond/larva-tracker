@@ -534,7 +534,7 @@ def main(args):
         )
 
     cue = lambda step=None: args.movie[args.beginning:args.ending:step]
-    cue_length = (args.ending or args.movie.frame_count) - (args.beginning or 0)
+    cue_frame_count = (args.ending or args.movie.frame_count) - (args.beginning or 0)
     first_frame = args.movie[args.beginning or 0]
 
     # coin for scale
@@ -577,16 +577,20 @@ def main(args):
     disp = blob_tracking \
         ( args.movie.source
         , first_frame
-        , cue_length
-        , trblobs.trackBlobs \
-            ( blob_params.mkDetector(params)
-            , cupetri_half
-            , lambda path: None if len(path) < 10 else flagger(path)
-            , cropped
-            , anchor_match_dist=20
-            , max_flow_err=20
-            , blur_size=4
-            , debug = args.debug == 'tracking' and args.debug
+        , cue_frame_count
+        , flagger
+        , itertools.izip \
+            ( itertools.islice(croppedA, 1, None)
+            , trblobs.trackBlobs \
+                ( blob_params.mkDetector(params)
+                , cupetri_half
+                , lambda path: None if len(path) < 10 else flagger(path)
+                , croppedB
+                , anchor_match_dist=20
+                , max_flow_err=20
+                , blur_size=4
+                , debug = args.debug == 'tracking' and args.debug
+                )
             )
         )
 
