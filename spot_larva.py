@@ -69,12 +69,7 @@ def blob_analysis \
         , args
         , beginning
         , paths
-        , upetri = None
-        , spetri = None
         , mm_per_px = None
-        , ucoin = None
-        , scoin = None
-        , bbcoin = None
         ):
     print('= Path summary')
     for i, p in enumerate(paths):
@@ -119,8 +114,8 @@ def blob_analysis \
           , 'std x;y;r ({du_})'.format(du_=du_orig)
           , 'bb x0;y0;x1;y1 (px)'
           ]
-        , ['coin', fmt_s(ucoin), fmt_s(scoin), fmt_s(None if bbcoin is None else (bbcoin[0] + bbcoin[1]))]
-        , ['petri dish', fmt_s(upetri), fmt_s(spetri)]
+#       , ['coin', fmt_s(ucoin), fmt_s(scoin), fmt_s(None if bbcoin is None else (bbcoin[0] + bbcoin[1]))]
+#       , ['petri dish', fmt_s(upetri), fmt_s(spetri)]
         # +-------+-----------------+----------------+---------------------+
         # | obj   | mean x;y;r (px) | std x;y;r (px) | bb x0;y0;x1;y1 (px) |
         # +-------+-----------------+----------------+---------------------+
@@ -210,37 +205,73 @@ def write_table(outfile, table_data):
     print('csv written:', outfile)
 
 
-def annot_bqr(*args):
-    '''a MouseQuery annotator which facilitates the selection of boxes'''
-    _, lmb, _, _ = args
-    mouse.annotate_box(*args, color_fn=lambda *_: (0,255,255))
-    if lmb:
-        mouse.annotate_quadrants(*args)
-    mouse.annotate_reticle(*args, color_fn=lambda *_: (0,0,255), size=25)
+class AOI(object):
+    __slots__ = '__arr'
+    def __init__(self, pts):
+        '''[[i0,j0,k0, ...], [i1,j1,k1, ...]] -> AOI'''
+        assert pts.ndim == 2, 'AOI: pts must have two dimensions'
+        assert pts.shape[0] == 2, 'AOI: must contain 2 points'
+        assert (pts[0] < pts[1]).all(), 'AOI: points must represent a box'
+        self.__arr = pts.copy()
+    @property
+    def ptarr(self):
+        '''AOI -> numpy.array([[i0,j0,k0], [i1,j1,k1]])'''
+        return self.__arr.copy()
+    @property
+    def pts(self):
+        '''AOI -> ((i0,j0,k0), (i1,j1,k1))'''
+        return tuple(map(tuple, self.__arr))
+    @property
+    def pt0_size(self):
+        '''AOI -> ((i0,j0,k0), (i1-i0,j1-j0,k1-k0))'''
+        pt0, pt1 = self.__arr
+        return tuple(pt0), tuple(pt1 - pt0)
+    @property
+    def slices(self):
+        '''AOI -> (slice(i0,i1), slice(j0,j1), slice(k0,k1))'''
+        return tuple(map(functools.partial(apply, slice), self.__arr.transpose()))
+
+    def rectangle(self, img, color, **kwargs):
+        '''numpy.ndarray, tup<num>[, kwargs of cv2.rectangle] -> None'''
+        pt0, pt1 = self.pts
+        return cv2.rectangle(img, tuple(reversed(pt0)), tuple(reversed(pt1)), color, **kwargs)
+    def crop(self, img):
+        '''numpy.ndarray -> numpy.ndarray'''
+        return img[self.slices]
+    def expand(self, n):
+        '''num -> AOI'''
+        pts = self.ptarr
+        pts[0] -= n
+        pts[1] += n
+        return type(self)(pts)
+
+    def __repr__(self):
+        return '{}(\n{}\n)'.format(type(self).__name__, repr(self.__arr))
+
+    @classmethod
+    def from_pts(cls, pts):
+        '''((i0,j0,k0), (i1,j1,k1)) -> AOI'''
+        return cls(numpy.array(pts))
+    @classmethod
+    def from__pt0_pt1(cls, pt0, pt1):
+        '''(i0,j0,k0), (i1,j1,k1) -> AOI'''
+        return cls.from_pts((pt0, pt1))
+    @classmethod
+    def from__pt0_size(cls, base_size):
+        '''((i0,j0,k0), (i1-i0,j1-j0,k1-k0)) -> AOI'''
+        base, size = base_size
+        return cls.from__pt0_pt1(base, numpy.array(base) + size)
 
 
 class QueryAOI(object):
 
     @classmethod
-    def manual_crop(cls, x_y_w_h, raw_frames):
-        '''tup4<num>, iter<numpy.array> -> iter<numpy.array>
-
-           Crop a stream of frames to a bounding-box.
-        '''
-        x0, y0, width, height = x_y_w_h
-        x1 = x0 + width
-        y1 = y0 + height
-        aoi = cls.aoi_shaped((y0, y1, x0, x1))
-        return cls.apply_aoi(aoi, raw_frames)
-
-    @classmethod
-    def main(cls, filepath, codeword, windower, raw_frames, cached=False):
-        '''str, str, WindowMaker, iter<numpy.array>[, bool] -> tup4<num>, iter<numpy.array>
+    def query_aoi_main(cls, filepath, codeword, windower, raw_frames, cached=False):
+        '''str, str, WindowMaker, iter<numpy.array>[, bool] -> AOI, iter<numpy.array>
 
            Load the AOI for `codeword` from the cache for `filepath` or fall back querying the user.
            Crop the stream of frames.
         '''
-        # TODO: add a question for the user to the screen "Click to draw a box around {codeword}."
         if cached:
             # read cache or ask user, conditionally save cache
             aoiM = cls.query_aoi_cache(filepath, codeword)
@@ -255,10 +286,11 @@ class QueryAOI(object):
 
     @classmethod
     def ask_for_aoi(cls, windower, raw_frames):
-        '''WindowMaker, iter<numpy.array> -> tup4<num>, iter<numpy.array>
+        '''WindowMaker, iter<numpy.array> -> AOI, iter<numpy.array>
 
            Query the user for their area of interest. Return it and a stream of cropped frames.
         '''
+        # TODO: add a question for the user to the screen "Click to draw a box around {codeword}."
         first = next(raw_frames)
         frames = itertools.chain([first], raw_frames)
         # query for a general area on the frame
@@ -267,33 +299,31 @@ class QueryAOI(object):
                     ( ow
                     , first
                     , point_count = 2
-                    , annot_fn = annot_bqr
+                    , annot_fn = cls.annot_bqr
                     ) as query:
                 pts = query()
-        x0, x1 = sorted(max(x, 0) for x,_ in pts)
-        y0, y1 = sorted(max(y, 0) for _,y in pts)
-        aoi = cls.aoi_shaped((y0, y1, x0, x1))
+        col0, col1 = sorted(max(col, 0) for col,_ in pts)
+        row0, row1 = sorted(max(row, 0) for _,row in pts)
+        aoi = AOI.from__pt0_pt1((row0, col0), (row1, col1))
         return aoi, cls.apply_aoi(aoi, frames)
 
     @classmethod
     def query_aoi_cache(cls, filepath, codeword):
-        '''str, str -> maybe<tup4<num>>'''
+        '''str, str -> maybe<AOI>'''
         try:
             with open(cls.aoi_cache_name(filepath, codeword), 'rb') as npy:
-                print('hit',cls.aoi_cache_name(filepath, codeword))
-                return cls.aoi_shaped(numpy.load(npy)) # Cache hit, return $ Just aoi
+                return AOI(numpy.load(npy)) # Cache hit, return $ Just aoi
         except IOError as e:
             if e.errno == 2:
-                print('miss')
                 return # Cache miss, return Nothing
             else:
                 raise e # Bug, re-raise
 
     @classmethod
     def save_aoi_cache(cls, filepath, codeword, aoi):
-        '''str, str, tup4<num> -> None'''
+        '''str, str, AOI -> None'''
         with open(cls.aoi_cache_name(filepath, codeword), 'wb') as npy:
-            numpy.save(npy, cls.aoi_shaped(aoi))
+            numpy.save(npy, aoi.ptarr)
 
     @staticmethod
     def aoi_cache_name(filepath, codeword):
@@ -302,23 +332,24 @@ class QueryAOI(object):
 
     @staticmethod
     def apply_aoi(aoi, raw_frames):
-        '''tup4<num>, iter<numpy.array> -> iter<numpy.array>'''
-        y0, y1, x0, x1 = aoi
-        return itertools.imap(lambda im: im[y0:y1, x0:x1, ...], raw_frames)
+        '''AOI, iter<numpy.array> -> iter<numpy.array>'''
+        s = aoi.slices
+        return itertools.imap(lambda im: im[s], raw_frames)
 
     @staticmethod
-    def aoi_shaped(aoi):
-        '''tup4<num> -> tup4<num>'''
-        y0, y1, x0, x1 = aoi
-        assert x0 >= 0 and x0 <= x1
-        assert y0 >= 0 and y0 <= y1
-        return aoi
+    def annot_bqr(*args):
+        '''a MouseQuery annotator which facilitates the selection of boxes'''
+        _, lmb, _, _ = args
+        mouse.annotate_box(*args, color_fn=lambda *_: (0,255,255))
+        if lmb:
+            mouse.annotate_quadrants(*args)
+        mouse.annotate_reticle(*args, color_fn=lambda *_: (0,0,255), size=25)
 
 
 class CircleForScale(object):
 
     @staticmethod
-    def main(codeword, frames, min_ct, max_std, circle_iter_kwargs, diameter_mm=None, debug=None):
+    def circle_for_scale_main(codeword, frames, min_ct, max_std, circle_iter_kwargs, diameter_mm=None, debug=None):
         '''... -> maybe<(ndarray<3>, ndarray<3>, maybe<float>)>
 
            Attempt to detect a circle in the stream of frames.
@@ -350,11 +381,11 @@ class CircleForScale(object):
             std_diam  = 2 *  std_rad
 
         if pct < 0.9:
-            print('! Warning: %s was detected in less than 90% of frames.' % codeword.title())
+            print('! Warning: %s was detected in less than 90%% of frames.' % codeword.title())
             print('!    Try re-running with `-d/--debug %s` to see what is failing.' % codeword)
 
         if std_rad >= 0.1 * mean_rad:
-            print('! Warning: %s radius standard deviation is >= 10% of radius mean.' % codeword.title())
+            print('! Warning: %s radius standard deviation is >= 10%% of radius mean.' % codeword.title())
             print('!    Try re-running with `-d/--debug %s` to see what is failing.' % codeword)
 
         if diameter_mm is None:
@@ -411,6 +442,8 @@ def mask_circle(circle_x_y_r, frames, debug=None):
         yield out
 
 
+# TODO: move this into AOI.from_circle?
+# TODO: make a Circle class like AOI to hold all the relevant ideas
 def circle_bb(circle_x_y_r, frame_w_h):
     '''Extract clamped and unclamped bounding boxes for the circle.
        Convert circle coordinates to clamped space.
@@ -466,57 +499,6 @@ def circle_bb(circle_x_y_r, frame_w_h):
         )
 
 
-def main_coin(pathroot, windower, coin_diameter_mm, frameinfos, debug=None):
-    codeword = 'coin'
-    coin_aoi, \
-    coin_frames = QueryAOI.main \
-        ( pathroot
-        , codeword
-        , windower
-        , images(frameinfos)
-        , cached = False
-        )
-    # TODO: make magic #s in terms of resolution?
-    coin_result = CircleForScale.main \
-        ( codeword
-        , coin_frames
-        , 15   # min_ct
-        , 3.25 # max_std
-        , dict \
-            ( blur = 8
-            , param2 = 25
-            , minFraction = 0.5
-            , maxFraction = 1.5
-            ) # circle_iter_kwargs
-        , diameter_mm = coin_diameter_mm
-        , debug = debug
-        )
-    assert coin_result, 'A coin must be detected.'
-    # when unpacking coin-result, keep in mind that it's relative to coin_aoi
-    y0, y1, x0, x1 = coin_aoi
-    coin_mean, coin_std, mm_per_px = coin_result
-    return mm_per_px, [x0, y0, 0] + coin_mean, coin_std, ((x0, y0), (x1, y1))
-
-def main_petri_dish(petri_diameter_mm, frameinfos, debug=None):
-    petri_result = CircleForScale.main \
-        ( 'petri'
-        , images(frameinfos)
-        , 10   # min_ct
-        , 15.0 # max_std
-        , dict \
-            ( blur = 10
-            , param2 = 50
-            , minFraction = 0.8
-            , maxFraction = 1.2
-            ) # circle_iter_kwargs
-        , diameter_mm = petri_diameter_mm
-        , debug = debug
-        )
-    assert petri_result, 'A petri dish must be detected.'
-    petri_mean, petri_std, mm_per_px = petri_result
-    return mm_per_px, petri_mean, petri_std
-
-
 def main(args):
 
     # print args
@@ -538,33 +520,81 @@ def main(args):
     first_frame = args.movie[args.beginning or 0]
 
     # coin for scale
-    # TODO: must print question on the frame somewhere
-    if args.coin:
-        mm_per_px_coin, ucoin, scoin, bbcoin = main_coin(source_pathroot, window_maker, args.coin_diameter, cue(step=3), debug=args.debug)
-        cv2.imwrite('{}_{}.png'.format(source_pathroot, 'coin'), CircleForScale.debug_image(first_frame.image, bbcoin, ucoin))
+    if not args.coin:
+        mm_per_px_coin = None
     else:
-        mm_per_px_coin, ucoin, scoin, bbcoin = None, None, None, None
+        # TODO: must print question on the frame somewhere
+        coin_aoi, coin_frames \
+            = QueryAOI.query_aoi_main \
+            ( source_pathroot
+            , 'coin'
+            , window_maker
+            , images(cue(step=3))
+            , cached = True
+            )
+        # TODO: write magic numbers in terms of frame resolution or appropriate
+        coin_mean_relative, _, mm_per_px_coin \
+            = CircleForScale.circle_for_scale_main \
+            ( 'coin'
+            , coin_frames
+            , 15   # min_ct
+            , 3.25 # max_std
+            , dict \
+                ( blur = 8
+                , param2 = 25
+                , minFraction = 0.5
+                , maxFraction = 1.5
+                )
+            , diameter_mm = args.coin_diameter
+            , debug = args.debug
+            )
+        cv2.imwrite \
+            ( '{}_{}.png'.format(source_pathroot, 'coin')
+            , CircleForScale.debug_image \
+                ( first_frame.image
+                , map(lambda p: tuple(reversed(p)), coin_aoi.pts)
+                , numpy.concatenate([tuple(reversed(coin_aoi.pts[0])), [0]]) + coin_mean_relative
+                )
+            )
 
     # petri dish for crop
-    mm_per_px_petri, upetri, spetri = main_petri_dish(args.petri_dish_diameter, cue(step=3), debug=args.debug)
+    # TODO: write magic numbers in terms of frame resolution or appropriate
+    petri_mean, _, mm_per_px_petri = CircleForScale.circle_for_scale_main \
+        ( 'petri'
+        , images(cue(step=3))
+        , 10   # min_ct
+        , 15.0 # max_std
+        , dict \
+            ( blur = 10
+            , param2 = 50
+            , minFraction = 0.8
+            , maxFraction = 1.2
+            )
+        , diameter_mm = args.petri_dish_diameter
+        , debug = args.debug
+        )
+    _, ((cbbx, cbby), (cbbw, cbbh)), cc = circle_bb \
+        ( petri_mean
+        , ( args.movie.frame_width
+          , args.movie.frame_height
+          )
+        )
+    cupetri = numpy.concatenate((cc, petri_mean[2:]))
+    cupetri_half = numpy.concatenate((cupetri[:2], 0.5 * cupetri[2:]))
 
     mm_per_px = (mm_per_px_coin + mm_per_px_petri) / 2
     print('= Average scale {:g} mm/px'.format(mm_per_px))
-
-    _, ((cbbx, cbby), (cbbw, cbbh)), cc = circle_bb(upetri, (args.movie.frame_width, args.movie.frame_height))
-    cupetri = numpy.concatenate((cc, upetri[2:]))
 
     croppedA, croppedB = itertools.tee \
         ( applyto_images \
             ( cue()
             , lambda upstream: \
-                QueryAOI.manual_crop([cbbx, cbby, cbbw, cbbh],
-                    mask_circle(upetri, upstream))
+                QueryAOI.apply_aoi(AOI.from__pt0_size([(cbby, cbbx), (cbbh, cbbw)]),
+                    mask_circle(petri_mean, upstream))
             )
         )
 
     # track
-    cupetri_half = numpy.concatenate((cupetri[:2], 0.5 * cupetri[2:]))
     flagger = trblobs.gen_flagger(cupetri_half)
     params = { "filterByConvexity": False
              , "filterByCircularity": False
@@ -607,12 +637,7 @@ def main(args):
         , args
         , first_frame
         , paths
-        , upetri = upetri
-        , spetri = spetri
         , mm_per_px = mm_per_px
-        , ucoin = ucoin
-        , scoin = scoin
-        , bbcoin = bbcoin
         , )
 
     if ret.fully_consumed:
