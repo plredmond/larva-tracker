@@ -205,64 +205,6 @@ def write_table(outfile, table_data):
     print('csv written:', outfile)
 
 
-class AOI(object):
-    __slots__ = '__arr'
-    def __init__(self, pts):
-        '''[[i0,j0,k0, ...], [i1,j1,k1, ...]] -> AOI'''
-        assert pts.ndim == 2, 'AOI: pts must have two dimensions'
-        assert pts.shape[0] == 2, 'AOI: must contain 2 points'
-        assert (pts[0] < pts[1]).all(), 'AOI: points must represent a box'
-        self.__arr = pts.copy()
-    @property
-    def ptarr(self):
-        '''AOI -> numpy.array([[i0,j0,k0], [i1,j1,k1]])'''
-        return self.__arr.copy()
-    @property
-    def pts(self):
-        '''AOI -> ((i0,j0,k0), (i1,j1,k1))'''
-        return tuple(map(tuple, self.__arr))
-    @property
-    def pt0_size(self):
-        '''AOI -> ((i0,j0,k0), (i1-i0,j1-j0,k1-k0))'''
-        pt0, pt1 = self.__arr
-        return tuple(pt0), tuple(pt1 - pt0)
-    @property
-    def slices(self):
-        '''AOI -> (slice(i0,i1), slice(j0,j1), slice(k0,k1))'''
-        return tuple(map(functools.partial(apply, slice), self.__arr.transpose()))
-
-    def rectangle(self, img, color, **kwargs):
-        '''numpy.ndarray, tup<num>[, kwargs of cv2.rectangle] -> None'''
-        pt0, pt1 = self.pts
-        return cv2.rectangle(img, tuple(reversed(pt0)), tuple(reversed(pt1)), color, **kwargs)
-    def crop(self, img):
-        '''numpy.ndarray -> numpy.ndarray'''
-        return img[self.slices]
-    def expand(self, n):
-        '''num -> AOI'''
-        pts = self.ptarr
-        pts[0] -= n
-        pts[1] += n
-        return type(self)(pts)
-
-    def __repr__(self):
-        return '{}(\n{}\n)'.format(type(self).__name__, repr(self.__arr))
-
-    @classmethod
-    def from_pts(cls, pts):
-        '''((i0,j0,k0), (i1,j1,k1)) -> AOI'''
-        return cls(numpy.array(pts))
-    @classmethod
-    def from__pt0_pt1(cls, pt0, pt1):
-        '''(i0,j0,k0), (i1,j1,k1) -> AOI'''
-        return cls.from_pts((pt0, pt1))
-    @classmethod
-    def from__pt0_size(cls, base_size):
-        '''((i0,j0,k0), (i1-i0,j1-j0,k1-k0)) -> AOI'''
-        base, size = base_size
-        return cls.from__pt0_pt1(base, numpy.array(base) + size)
-
-
 class QueryAOI(object):
 
     @classmethod
@@ -286,7 +228,7 @@ class QueryAOI(object):
 
     @classmethod
     def ask_for_aoi(cls, windower, raw_frames):
-        '''WindowMaker, iter<numpy.array> -> AOI, iter<numpy.array>
+        '''WindowMaker, iter<numpy.array> -> Box, iter<numpy.array>
 
            Query the user for their area of interest. Return it and a stream of cropped frames.
         '''
@@ -302,17 +244,17 @@ class QueryAOI(object):
                     , annot_fn = cls.annot_bqr
                     ) as query:
                 pts = query()
-        col0, col1 = sorted(max(col, 0) for col,_ in pts)
-        row0, row1 = sorted(max(row, 0) for _,row in pts)
-        aoi = AOI.from__pt0_pt1((row0, col0), (row1, col1))
+        x0, x1 = sorted(max(col, 0) for col,_ in pts)
+        y0, y1 = sorted(max(row, 0) for _,row in pts)
+        aoi = util.Box(util.Point2D(x=x0, y=y0), util.Point2D(x=x1, y=y1))
         return aoi, cls.apply_aoi(aoi, frames)
 
     @classmethod
     def query_aoi_cache(cls, filepath, codeword):
-        '''str, str -> maybe<AOI>'''
+        '''str, str -> maybe<Box>'''
         try:
             with open(cls.aoi_cache_name(filepath, codeword), 'rb') as npy:
-                return AOI(numpy.load(npy)) # Cache hit, return $ Just aoi
+                return util.Box.from_rc_arr(numpy.load(npy)) # Cache hit, return $ Just aoi
         except IOError as e:
             if e.errno == 2:
                 return # Cache miss, return Nothing
@@ -321,9 +263,9 @@ class QueryAOI(object):
 
     @classmethod
     def save_aoi_cache(cls, filepath, codeword, aoi):
-        '''str, str, AOI -> None'''
+        '''str, str, Box -> None'''
         with open(cls.aoi_cache_name(filepath, codeword), 'wb') as npy:
-            numpy.save(npy, aoi.ptarr)
+            numpy.save(npy, aoi.pt_rc_arr)
 
     @staticmethod
     def aoi_cache_name(filepath, codeword):
@@ -403,9 +345,9 @@ class CircleForScale(object):
         return (mean, std, mm_per_px if diameter_mm else None)
 
     @staticmethod
-    def debug_image(src, pts, mean, expand=4):
+    def debug_image(src, box, mean, expand=4):
         dst = src.copy()
-        cv2.rectangle(dst, pts[0], pts[1], (0,255,255))
+        box.rectangle(dst, (0,255,255))
         circles.annot_target(int(mean[0]), int(mean[1]), int(mean[2]), dst)
         return dst
 
@@ -533,7 +475,7 @@ def main(args):
             , cached = True
             )
         # TODO: write magic numbers in terms of frame resolution or appropriate
-        coin_mean_relative, _, mm_per_px_coin \
+        coin_mean_rel, _, mm_per_px_coin \
             = CircleForScale.circle_for_scale_main \
             ( 'coin'
             , coin_frames
@@ -552,8 +494,8 @@ def main(args):
             ( '{}_{}.png'.format(source_pathroot, 'coin')
             , CircleForScale.debug_image \
                 ( first_frame.image
-                , map(lambda p: tuple(reversed(p)), coin_aoi.pts)
-                , numpy.concatenate([tuple(reversed(coin_aoi.pts[0])), [0]]) + coin_mean_relative
+                , coin_aoi
+                , numpy.concatenate([coin_aoi.pt0.xy + coin_mean_rel[:2], coin_mean_rel[2:]])
                 )
             )
 
@@ -588,9 +530,13 @@ def main(args):
     croppedA, croppedB = itertools.tee \
         ( applyto_images \
             ( cue()
-            , lambda upstream: \
-                QueryAOI.apply_aoi(AOI.from__pt0_size([(cbby, cbbx), (cbbh, cbbw)]),
-                    mask_circle(petri_mean, upstream))
+            , lambda upstream: QueryAOI.apply_aoi \
+                ( util.Box \
+                    ( util.Point2D(x=cbbx, y=cbby)
+                    , util.Point2D(x=cbbx+cbbw, y=cbby+cbbh)
+                    )
+                , mask_circle(petri_mean, upstream)
+                )
             )
         )
 
