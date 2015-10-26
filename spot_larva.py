@@ -270,7 +270,7 @@ class QueryAOI(object):
     @staticmethod
     def aoi_cache_name(filepath, codeword):
         '''str, str -> str'''
-        return '{}_{}.npy'.format(filepath, codeword)
+        return '{}.{}.npy'.format(filepath, codeword)
 
     @staticmethod
     def apply_aoi(aoi, raw_frames):
@@ -345,11 +345,9 @@ class CircleForScale(object):
         return (mean, std, mm_per_px if diameter_mm else None)
 
     @staticmethod
-    def debug_image(src, box, mean, expand=4):
-        dst = src.copy()
+    def annot_coin_result(dst, box, circle):
         box.rectangle(dst, (0,255,255))
-        circles.annot_target(int(mean[0]), int(mean[1]), int(mean[2]), dst)
-        return dst
+        circles.annot_target(int(circle[0]), int(circle[1]), int(circle[2]), dst)
 
 
 # images : iter<frameinfo> -> iter<numpy.array>
@@ -460,6 +458,7 @@ def main(args):
     cue = lambda step=None: args.movie[args.beginning:args.ending:step]
     cue_frame_count = (args.ending or args.movie.frame_count) - (args.beginning or 0)
     first_frame = args.movie[args.beginning or 0]
+    debug_image = first_frame.image.copy()
 
     # coin for scale
     if not args.coin:
@@ -490,13 +489,10 @@ def main(args):
             , diameter_mm = args.coin_diameter
             , debug = args.debug
             )
-        cv2.imwrite \
-            ( '{}_{}.png'.format(source_pathroot, 'coin')
-            , CircleForScale.debug_image \
-                ( first_frame.image
-                , coin_aoi
-                , numpy.concatenate([coin_aoi.pt0.xy + coin_mean_rel[:2], coin_mean_rel[2:]])
-                )
+        CircleForScale.annot_coin_result \
+            ( debug_image
+            , coin_aoi
+            , numpy.concatenate([coin_aoi.pt0.xy + coin_mean_rel[:2], coin_mean_rel[2:]])
             )
 
     # petri dish for crop
@@ -515,6 +511,12 @@ def main(args):
         , diameter_mm = args.petri_dish_diameter
         , debug = args.debug
         )
+    circles.annot_target(int(petri_mean[0]), int(petri_mean[1]), int(petri_mean[2]), debug_image)
+
+    # save the debug image w/coin & petri info
+    cv2.imwrite(source_pathroot + '_result.png', debug_image)
+
+    # TODO: clean up these- use box, or make a circle class?
     _, ((cbbx, cbby), (cbbw, cbbh)), cc = circle_bb \
         ( petri_mean
         , ( args.movie.frame_width
@@ -524,6 +526,7 @@ def main(args):
     cupetri = numpy.concatenate((cc, petri_mean[2:]))
     cupetri_half = numpy.concatenate((cupetri[:2], 0.5 * cupetri[2:]))
 
+    # FIXME: not currently compatible with --no-coin
     mm_per_px = (mm_per_px_coin + mm_per_px_petri) / 2
     print('= Average scale {:g} mm/px'.format(mm_per_px))
 
@@ -551,7 +554,7 @@ def main(args):
              , "maxArea": 250.0
              }
     disp = blob_tracking \
-        ( args.movie.source
+        ( source_pathroot
         , first_frame
         , cue_frame_count
         , flagger
@@ -587,7 +590,7 @@ def main(args):
         , )
 
     if ret.fully_consumed:
-        write_table(args.movie.source + '.csv', table_data)
+        write_table(source_pathroot + '_result.csv', table_data)
     else:
         print('table_data', table_data)
 
