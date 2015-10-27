@@ -461,10 +461,26 @@ def main(args):
     first_frame = args.movie[args.beginning or 0]
     debug_image = first_frame.image.copy()
 
+    # petri dish for crop
+    # TODO: write magic numbers in terms of frame resolution or appropriate
+    petri_mean, _, mm_per_px_petri = CircleForScale.circle_for_scale_main \
+        ( 'petri'
+        , images(cue(step=3))
+        , 10   # min_ct
+        , 15.0 # max_std
+        , dict \
+            ( blur = 10
+            , param2 = 50
+            , minFraction = 0.8
+            , maxFraction = 1.2
+            )
+        , diameter_mm = args.petri_dish_diameter
+        , debug = args.debug
+        )
+    circles.annot_target(int(petri_mean[0]), int(petri_mean[1]), int(petri_mean[2]), debug_image)
+
     # coin for scale
-    if not args.coin:
-        mm_per_px_coin = None
-    else:
+    if args.coin:
         # TODO: must print question on the frame somewhere
         coin_aoi, coin_frames \
             = QueryAOI.query_aoi_main \
@@ -495,26 +511,13 @@ def main(args):
             , coin_aoi
             , numpy.concatenate([coin_aoi.pt0.xy + coin_mean_rel[:2], coin_mean_rel[2:]])
             )
+        mm_per_px = (mm_per_px_coin + mm_per_px_petri) / 2
+        print('= Average scale {:g} mm/px'.format(mm_per_px))
+    else:
+        mm_per_px = mm_per_px_petri
+        print('! Warning: Using only petri dish for scale because --no-coin was given.')
 
-    # petri dish for crop
-    # TODO: write magic numbers in terms of frame resolution or appropriate
-    petri_mean, _, mm_per_px_petri = CircleForScale.circle_for_scale_main \
-        ( 'petri'
-        , images(cue(step=3))
-        , 10   # min_ct
-        , 15.0 # max_std
-        , dict \
-            ( blur = 10
-            , param2 = 50
-            , minFraction = 0.8
-            , maxFraction = 1.2
-            )
-        , diameter_mm = args.petri_dish_diameter
-        , debug = args.debug
-        )
-    circles.annot_target(int(petri_mean[0]), int(petri_mean[1]), int(petri_mean[2]), debug_image)
-
-    # save the debug image w/coin & petri info
+    # save debug image w/ coin & petri dish
     cv2.imwrite(source_pathroot + '_result.png', debug_image)
 
     # TODO: clean up these- use box, or make a circle class?
@@ -526,10 +529,6 @@ def main(args):
         )
     cupetri = numpy.concatenate((cc, petri_mean[2:]))
     cupetri_half = numpy.concatenate((cupetri[:2], 0.5 * cupetri[2:]))
-
-    # FIXME: not currently compatible with --no-coin
-    mm_per_px = (mm_per_px_coin + mm_per_px_petri) / 2
-    print('= Average scale {:g} mm/px'.format(mm_per_px))
 
     croppedA, croppedB = itertools.tee \
         ( applyto_images \
