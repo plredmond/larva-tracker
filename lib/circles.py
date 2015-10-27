@@ -15,8 +15,8 @@ import numpy
 
 import lib.cviter as cviter
 
-def find_circle(min_ct, max_std, *args, **kwargs):
-    '''int, float, <args of circles_iter> -> float, ndarray<1,3> ndarray<1,3>
+def find_circle(codeword, min_ct, max_std, *args, **kwargs):
+    '''str, int, float, <args of circles_iter> -> float, ndarray<1,3> ndarray<1,3>
 
        Search each frame of a video for a singleton circle.
 
@@ -30,7 +30,7 @@ def find_circle(min_ct, max_std, *args, **kwargs):
         , numpy.array([x, y, radius]) # standard deviation of properties over all singleton circles
         )
     '''
-    print('> Finding circle location & radius..')
+    print('> Finding "{}" circle location & radius..'.format(codeword))
     arrs = []
     for i, result in enumerate(circles_iter(*args, **kwargs)):
         ct, _ = result.shape

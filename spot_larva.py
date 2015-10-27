@@ -304,7 +304,8 @@ class CircleForScale(object):
             assert diameter_mm > 0
 
         circleM = circles.find_circle \
-            ( min_ct
+            ( codeword
+            , min_ct
             , max_std
             , frames
             , debug = debug == codeword and debug
