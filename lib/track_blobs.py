@@ -161,14 +161,14 @@ def anchor_path_group(pg, detect, ti, match_dist=100):
     return [path_match.get(P) for P, path in enumerate(pg)] \
          , [blob for B, blob in enumerate(bs1) if B not in blob_match]
 
-def annot(im, path_group):
-    map(functools.partial(annot_point, im), [path[-1] for path in path_group])
+def annot(im, path):
+    annot_point(im, path[-1])
 
-def annot_hist(im, path_group):
-    for path in path_group:
+def annot_hist(im, path, annotate_point=True, **kwargs):
+    if annotate_point:
         annot_point(im, path[-1])
-        map(functools.partial(annot_segment, im),
-                iterutils.slidingWindow(2, path))
+    map(functools.partial(annot_segment, im, **kwargs),
+            iterutils.slidingWindow(2, path))
 
 def annot_point(im, point):
     assert isinstance(point, (BlobPoint, FlowPoint))
@@ -177,15 +177,17 @@ def annot_point(im, point):
     else:
         cv2.circle(im, tuple(point.pt), point.error, (50,50,255))
 
-def annot_segment(im, points):
-    p0, p1 = points
-    color = \
-        { (BlobPoint, BlobPoint): (0, 0, 0) # black
-        , (FlowPoint, FlowPoint): (50,50,255) # deep red
-        , (BlobPoint, FlowPoint): (0,255,255) # light yellow
-        , (FlowPoint, BlobPoint): (25,125,0) # deep green
-        }[type(p0), type(p1)]
-    cv2.line(im, tuple(map(int, p0.pt)), tuple(map(int, p1.pt)), color)
+def annot_segment(im, points, color=None, thickness=None):
+    if color is None:
+        p0, p1 = points
+        color = \
+            { (BlobPoint, BlobPoint): (0, 0, 0) # black
+            , (FlowPoint, FlowPoint): (50,50,255) # deep red
+            , (BlobPoint, FlowPoint): (0,255,255) # light yellow
+            , (FlowPoint, BlobPoint): (25,125,0) # deep green
+            }[type(p0), type(p1)]
+    t = 1 if thickness is None else thickness
+    cv2.line(im, tuple(map(int, p0.pt)), tuple(map(int, p1.pt)), color, thickness=t)
 
 TrackState = collections.namedtuple('TrackState', 'paths debug')
 
@@ -297,11 +299,11 @@ def trackBlobs \
             # annotate current
             numpy.copyto(debugCur, bim1)
             cv2.circle(debugCur, tuple(half_petri[:2]), half_petri[2], (128,255,255), 1)
-            annot(debugCur, ns.paths)
+            [annot(debugCur, p) for p in ns.paths]
             # annotate history
             numpy.copyto(debugHist, bim1)
             cv2.circle(debugHist, tuple(half_petri[:2]), half_petri[2], (128,255,255), 1)
-            annot_hist(debugHist, ns.paths)
+            [annot_hist(debugHist, p) for p in ns.paths]
             # annotate differences in frames
             bimdt = cv2.absdiff(bim0, bim1)
             fimdt = cv2.absdiff(fim0, fim1)[...,None] # add extra dim for liken'd debug window
