@@ -29,21 +29,55 @@ import lib.circles as circles
 import lib.cviter as cviter
 import lib.cvutils as cvutils
 import lib.iterutils as iterutils
+import lib.color as color
+import lib.util as util
 
-def blob_tracking(filepath, beginning, length, stream, debug=None):
-    # TODO: figure out why the i enumerating over paths is off by 2
-    #   length is the frame count, but i is zero indexed
-    #   stream yields once for each pair of frames
+
+def blob_tracking(filepath, beginning, frame_count, flagger, stream, debug=None):
+    S = collections.namedtuple('S', 'secs analysis colors out')
+
+    span_count = frame_count - 1
+
     # TODO: do annotation here instead of trblobs.trackBlobs
     # TODO: compose the penny into the top left of the frames before they are displayed
-    secs = set()
-    for i, (annotCur, annotHist, paths) in enumerate(stream):
-        print('> At frame {}/{} tracking {} paths'.format(i, length, len(paths)))
-        s = int(max(map(lambda path: path[-1].frameinfo.msec - beginning.msec, paths)) // 1000)
-        if s not in secs:
-            secs.add(s)
-            cv2.imwrite(filepath + '_T{T}-hist.png'.format(T=s), annotHist)
-        yield ([annotCur, annotHist], paths)
+
+    ns = None
+
+    for span_num, (fi, paths) in enumerate(stream, 1):
+        print('> {}/{} tracking {} paths'.format(span_num, span_count, len(paths)))
+
+        if ns is None:
+            ns = S\
+                ( secs = set()
+                , analysis = numpy.empty_like(fi.image)
+                , colors = numpy.empty_like(fi.image)
+                , out = numpy.empty_like(fi.image)
+                )
+
+        t = max(pth[-1].frameinfo.msec - beginning.msec for pth in paths)
+        s = int(t // 1000)
+
+        # assign colors to all paths
+        # TODO
+
+        # generate colors image
+        # TODO
+        #numpy.copyto(ns.colors, fi.image)
+        #for each path
+        #trblobs.annot_hist(ns.colors, annotate_point=False, color=..., thickness=5)
+
+        # generate analysis image
+        numpy.copyto(ns.analysis, fi.image)
+        [trblobs.annot_hist(ns.analysis, p) for p in paths]
+
+        if s not in ns.secs:
+            ns.secs.add(s)
+            # generate out image (like colors, but only containing filtered paths)
+            filtered_paths = filter(lambda p: not flagger(p), paths)
+            cv2.imwrite('{}_resultT{T}.png'.format(filepath, T=s), ns.out)
+
+        yield ([ns.analysis, ns.colors], paths)
+
 
 def split_path(beginning, path):
     '''FrameInfo, Path -> [Path]
