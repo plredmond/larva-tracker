@@ -43,19 +43,19 @@ def blob_tracking(filepath, beginning, frame_count, flagger, stream, debug=None)
 
     ns = None
 
-    for span_num, (fi, paths) in enumerate(stream, 1):
-        print('> {}/{} tracking {} paths'.format(span_num, span_count, len(paths)))
+    for span_i, (fi, paths) in enumerate(stream):
+        print('> {}/{} tracking {} paths'.format(span_i, span_count, len(paths)))
 
         if ns is None:
             ns = S\
                 ( secs = set()
                 , analysis = numpy.empty_like(fi.image)
                 , colors = numpy.empty_like(fi.image)
-                , out = numpy.empty_like(fi.image)
+                , out = numpy.hstack([numpy.empty_like(fi.image), numpy.empty_like(fi.image)])
                 )
 
-        t = max(pth[-1].frameinfo.msec - beginning.msec for pth in paths)
-        s = int(t // 1000)
+        t = max(pth[-1].frameinfo.msec - beginning.msec for pth in paths) / 1000
+        sec = int(t)
 
         # assign colors to all paths
         # TODO
@@ -70,11 +70,18 @@ def blob_tracking(filepath, beginning, frame_count, flagger, stream, debug=None)
         numpy.copyto(ns.analysis, fi.image)
         [trblobs.annot_hist(ns.analysis, p) for p in paths]
 
-        if s not in ns.secs:
-            ns.secs.add(s)
-            # generate out image (like colors, but only containing filtered paths)
+        if sec not in ns.secs or span_i == span_count:
+            ns.secs.add(sec)
+            # generate out image
             filtered_paths = filter(lambda p: not flagger(p), paths)
-            cv2.imwrite('{}_resultT{T}.png'.format(filepath, T=s), ns.out)
+            lhs = ns.out[:,:fi.image.shape[1]]
+            rhs = ns.out[:,fi.image.shape[1]:]
+            out = '{}_resultT{T:.3}.png'.format(filepath, T=t)
+            print('= Writing', out)
+            numpy.copyto(lhs, fi.image)
+            [trblobs.annot_hist(lhs, p) for p in filtered_paths]
+            numpy.copyto(rhs, fi.image)
+            cv2.imwrite(out, ns.out)
 
         yield ([ns.analysis, ns.colors], paths)
 
