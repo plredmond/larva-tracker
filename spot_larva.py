@@ -73,7 +73,7 @@ def blob_tracking(filepath, beginning, frame_count, flagger, stream, debug=None)
         if sec not in ns.secs or span_i == span_count:
             ns.secs.add(sec)
             # generate out image
-            filtered_paths = filter(lambda p: not flagger(p), paths)
+            filtered_paths = iterutils.remove(flagger, paths)
             lhs = ns.out[:,:fi.image.shape[1]]
             rhs = ns.out[:,fi.image.shape[1]:]
             out = '{}_resultT{T:.3}.png'.format(filepath, T=t)
@@ -617,7 +617,7 @@ def main(args):
     # consume the stream & run final analysis
     with window_maker as window:
         ret = cviter.displaySink(window, disp, ending=False)
-    paths = filter(lambda p: not flagger(p), ret.result)
+    paths = iterutils.remove(flagger, ret.result) # TODO: move this into track_blobs -- just filter paths on the last frame or smth
     print('= Fully consumed' if ret.fully_consumed else '= Early termination')
     print('= {} paths'.format(len(paths)))
 
@@ -650,9 +650,15 @@ if __name__ == '__main__':
     # test
     doctests = map(lambda m: (m, doctest.testmod(m)),
         [ None
+        , blob_params
+        , circles
+        , color
         , cviter
-        , trblobs
         , cvutils
+        , iterutils
+        , mouse
+        , trblobs
+        , util
         ])
     if any(test.failed for module, test in doctests):
         for module, test in doctests:

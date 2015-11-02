@@ -19,6 +19,29 @@ fork = itertools.tee
 join = itertools.izip_longest
 race = itertools.izip
 
+
+keep = filter
+def remove(callbackM, sequence):
+    '''remove(function or None, sequence) -> list, tuple, or string
+
+       Return those items of sequence for which function(item) is false.  If
+       function is None, return the items that are false.  If sequence is a tuple
+       or string, return the same type, else return a list.
+
+       >>> odd = lambda n: n % 2
+       >>> keep(odd, range(10))
+       [1, 3, 5, 7, 9]
+       >>> remove(odd, range(10))
+       [0, 2, 4, 6, 8]
+       >>> keep(None, u'comma,separated,,values,'.split(','))
+       [u'comma', u'separated', u'values']
+       >>> remove(None, u'comma,separated,,values,'.split(','))
+       [u'', u'']
+    '''
+    f = (lambda x: not x) if callbackM is None else (lambda x: not callbackM(x))
+    return filter(lambda x: f(x), sequence)
+
+
 def slidingWindow(size, upstream):
     '''int iter<a> -> iter<[a]>
 

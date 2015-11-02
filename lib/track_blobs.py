@@ -292,7 +292,7 @@ def trackBlobs \
             )
 
         # filter paths
-        ns = ns._replace(paths = filter(lambda path: not otf_flagger(path), ns.paths))
+        ns = ns._replace(paths = iterutils.remove(otf_flagger, ns.paths))
 
         if debug:
             debugCur, debugHist = ns.debug
