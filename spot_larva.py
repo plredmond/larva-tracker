@@ -604,7 +604,7 @@ def main(args):
             , trblobs.trackBlobs \
                 ( blob_params.mkDetector(params)
                 , cupetri_half
-                , lambda path: None if len(path) < 10 else flagger(path)
+                , flagger
                 , croppedB
                 , anchor_match_dist=20
                 , max_flow_err=20

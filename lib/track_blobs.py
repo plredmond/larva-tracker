@@ -213,15 +213,17 @@ def gen_flagger(half_petri_x_y_r):
 def trackBlobs \
         ( detector
         , half_petri
-        , otf_flagger
+        , flagger
         , frameinfos
         , debug=None
         , anchor_match_dist=100
         , max_flow_err=100
         , blur_size=5
+        , min_filterable_length=10
         ):
     '''iter<ndarray<y,x,3>>[, str] -> ...
     '''
+    otf_flagger = lambda path: None if len(path) < min_filterable_length else flagger(path)
     ns = None
 
     # fan out input streams
