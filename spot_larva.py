@@ -585,7 +585,7 @@ def main(args):
         )
 
     # track
-    flagger = trblobs.gen_flagger(cupetri_half)
+    flagger = trblobs.gen_flagger(cupetri_half, args.max_flow_fraction)
     params = { "filterByConvexity": False
              , "filterByCircularity": False
              , "filterByInertia": False
@@ -617,7 +617,8 @@ def main(args):
     # consume the stream & run final analysis
     with window_maker as window:
         ret = cviter.displaySink(window, disp, ending=False)
-    paths = iterutils.remove(flagger, ret.result) # TODO: move this into track_blobs -- just filter paths on the last frame or smth
+    paths = iterutils.remove(flagger, ret.result)
+    # TODO: move this ^ into track_blobs -- just filter paths on the last frame or smth
     print('= Fully consumed' if ret.fully_consumed else '= Early termination')
     print('= {} paths'.format(len(paths)))
 
@@ -642,8 +643,15 @@ sentinel = \
     }
 
 default = \
-    {
+    { 'flow_fraction' : 0.4
     }
+
+def flow_fraction(f_str):
+    f = float(f_str)
+    if 0 <= f <= 1:
+        return f
+    else:
+        raise argparse.ArgumentTypeError('flow fraction is a value between 0 and 1, incl')
 
 if __name__ == '__main__':
 
@@ -702,6 +710,13 @@ if __name__ == '__main__':
         , default = 15 * 10
         , help = '''Diameter of the petri dish in the frame in millimeters. (default: 15mm)''')
     p.add_argument \
+        ( '-f'
+        , '--max-flow-fraction'
+        , metavar = 'f'
+        , type = flow_fraction
+        , default = default['flow_fraction']
+        , help = '''Allowed portion of a path which is optical-flow. (default: {:g})'''.format(default['flow_fraction']))
+    p.add_argument \
         ( '-d'
         , '--debug'
         , metavar = 'stage'
@@ -710,7 +725,7 @@ if __name__ == '__main__':
         ( '--no-coin'
         , dest='coin'
         , action = 'store_false'
-        , help = '''If there is no coin in the movie, give this option to skip scaling the data to millimeters.''')
+        , help = '''If there is no coin in the movie, give this option to skip searching for one (and rely solely on petri-dish size.''')
     p.add_argument \
         ( '-wh'
         , '--window-height'

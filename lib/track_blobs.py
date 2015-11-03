@@ -82,6 +82,16 @@ def anchor_path(path, fi, kp):
     assert isinstance(kp, CV2KeyPoint)
     return path[:] + [BlobPoint(pt=numpy.array(kp.pt), keypoint=kp, frameinfo=fi)]
 
+def flow_percent(path):
+    '''return the percentage of un-anchored flow points in the path'''
+    ct = 0
+    for before, now, after in iterutils.slidingWindow(3, path):
+        if type(before) == BlobPoint and type(after) == BlobPoint:
+            continue
+        elif type(now) == FlowPoint:
+            ct += 1
+    return ct / len(path)
+
 def new_path_group(detect, ti):
     (m0, _), (bim0, _), (_, _) = ti
     return [new_path(m0, kp) for kp in detect(bim0)]
@@ -191,11 +201,12 @@ def annot_segment(im, points, color=None, thickness=None):
 
 TrackState = collections.namedtuple('TrackState', 'paths debug')
 
-def gen_flagger(half_petri_x_y_r):
+def gen_flagger(half_petri_x_y_r, allowed_flow):
     # flaggers :: {str: (Path -> bool)}
+    assert 0 <= allowed_flow <= 1
     flaggers = \
-        { 'path is comprised of less than 10% BlobPoint'
-        : lambda path: len(filter(lambda p: isinstance(p, BlobPoint), path)) / len(path) < 0.1
+        { 'path is greater than %d%% un-anchored FlowPoint' % int(allowed_flow * 100)
+        : lambda path: flow_percent(path) > allowed_flow
         , 'path is completely outside of the inner half-radius of the petri dish'
         # TODO: change to manhattan dist
         : lambda path: all(not in_circle(half_petri_x_y_r, p.pt) for p in path)
