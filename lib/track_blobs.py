@@ -210,6 +210,8 @@ def gen_flagger(half_petri_x_y_r, allowed_flow):
         , 'path is completely outside of the inner half-radius of the petri dish'
         # TODO: change to manhattan dist
         : lambda path: all(not in_circle(half_petri_x_y_r, p.pt) for p in path)
+        , 'path distance is zero'
+        : lambda path: 0 == path_dist(path, dist=manhattan_dist)
         }
     # flag :: Path -> Maybe<str> (either a str or None)
     def flagger(path):
