@@ -103,7 +103,7 @@ def split_path(beginning, path):
     for T in sorted(bucket)[1:]: # keys except for 0
         assert T > 0
         bucket[T].appendleft(bucket[T - 1][-1])
-    return [bucket[T] for T in sorted(bucket)]
+    return min(bucket.keys()), [bucket[T] for T in sorted(bucket)]
 
 def blob_analysis \
         ( filepath
@@ -191,11 +191,12 @@ def blob_analysis \
     for P, path in enumerate(paths):
 
         # analyse path
-        pathlets = split_path(beginning, path)
+        pad, pathlets = split_path(beginning, path)
         bounds = map(trblobs.path_time_bounds, pathlets)
         time = map(trblobs.path_elapsed_time, pathlets)
         dist = map(trblobs.path_dist, pathlets)
         cdist = reduce(lambda acc, cur: acc + [acc[-1] + cur], dist, [0])[1:]
+        assert len(cdist) == len(dist)
 
         # assert correctness by comparing total-path analysis with sum of split-path analysis
         pbounds = trblobs.path_time_bounds(path)
@@ -209,7 +210,7 @@ def blob_analysis \
                 'distance described by cumulative sum must match total distance: P%d' % P
 
         # produce table data
-        pad = groups - len(pathlets)
+        take = max(0, groups - pad)
 
         # +---+----------+----------+----------+----------+
         # | 0 |          |          |          |          |
@@ -217,7 +218,7 @@ def blob_analysis \
         # | 2 |          |          |          |          |
         # +---+----------+----------+----------+----------+
         d_rows.append([P] + pad * [0] +
-                map(du, dist[:groups]))
+                map(du, dist[:take]))
 
         # +---+----------+----------+----------+----------+
         # | 0 |          |          |          |          |
@@ -225,7 +226,7 @@ def blob_analysis \
         # | 2 |          |          |          |          |
         # +---+----------+----------+----------+----------+
         cd_rows.append([P] + pad * [0] +
-                map(du, cdist[:groups]))
+                map(du, cdist[:take]))
 
         # +---+----------+----------+----------+----------+
         # | 0 |          |          |          |          |
@@ -233,7 +234,7 @@ def blob_analysis \
         # | 2 |          |          |          |          |
         # +---+----------+----------+----------+----------+
         s_rows.append([P] + pad * [0] +
-                [du(d) / tu(dt) for d, dt in zip(dist[:groups], time)])
+                [du(d) / tu(dt) for d, dt in zip(dist[:take], time)])
 
         # +---+----------+----------+----------+----------+
         # | 0 |          |          |          |          |
@@ -241,7 +242,7 @@ def blob_analysis \
         # | 2 |          |          |          |          |
         # +---+----------+----------+----------+----------+
         b_rows.append([P] + pad * ['-'] +
-                [fmt_s([tu(b - beginning.msec) for b in bs]) for bs in bounds[:groups]])
+                [fmt_s([tu(b - beginning.msec) for b in bs]) for bs in bounds[:take]])
 
     return g_rows + [[]] + d_rows + [[]] + cd_rows + [[]] + s_rows + [[]] + b_rows
 
