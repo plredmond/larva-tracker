@@ -150,25 +150,21 @@ def blob_analysis \
 
         , []
 
-        , [ 'object'
-          , 'mean x;y;r ({du_})'.format(du_=du_orig)
-          , 'std x;y;r ({du_})'.format(du_=du_orig)
-          , 'bb x0;y0;x1;y1 (px)'
-          ]
-#       , ['coin', fmt_s(ucoin), fmt_s(scoin), fmt_s(None if bbcoin is None else (bbcoin[0] + bbcoin[1]))]
-#       , ['petri dish', fmt_s(upetri), fmt_s(spetri)]
-        # +-------+-----------------+----------------+---------------------+
-        # | obj   | mean x;y;r (px) | std x;y;r (px) | bb x0;y0;x1;y1 (px) |
-        # +-------+-----------------+----------------+---------------------+
-        # | coin  | #;#;#           | #;#;#          | #;#;#;#             |
-        # | petri | #;#;#           | #;#;#          | #;#;#;#             |
-        # +-------+-----------------+----------------+---------------------+
         ]
     d_rows = \
         [ ['Distance traveled ({du})'.format(du=du_name)]
         , group_header
         # +---+----------+----------+----------+----------+
         # | Distance traveled (mm)                        |
+        # +---+----------+----------+----------+----------+
+        # | P | T1 = 15" | T2 = 30" | T3 = 45" | T4 = 60" |
+        # +---+----------+----------+----------+----------+
+        ]
+    cd_rows = \
+        [ ['Cumulative distance traveled ({du})'.format(du=du_name)]
+        , group_header
+        # +---+----------+----------+----------+----------+
+        # | Cumulative distance traveled (mm)             |
         # +---+----------+----------+----------+----------+
         # | P | T1 = 15" | T2 = 30" | T3 = 45" | T4 = 60" |
         # +---+----------+----------+----------+----------+
@@ -199,6 +195,7 @@ def blob_analysis \
         bounds = map(trblobs.path_time_bounds, pathlets)
         time = map(trblobs.path_elapsed_time, pathlets)
         dist = map(trblobs.path_dist, pathlets)
+        cdist = reduce(lambda acc, cur: acc + [acc[-1] + cur], dist, [0])[1:]
 
         # assert correctness by comparing total-path analysis with sum of split-path analysis
         pbounds = trblobs.path_time_bounds(path)
@@ -208,6 +205,8 @@ def blob_analysis \
                 'time described by pathlet must match total elapsed time: P%d' % P
         assert abs(trblobs.path_dist(path) - numpy.array(dist).sum()) < 0.0001, \
                 'distance described by sumnation must match total distance: P%d' % P
+        assert abs(trblobs.path_dist(path) - cdist[-1]) < 0.0001, \
+                'distance described by cumulative sum must match total distance: P%d' % P
 
         # produce table data
         pad = groups - len(pathlets)
@@ -217,7 +216,7 @@ def blob_analysis \
         # | 1 |          |          |          |          |
         # | 2 |          |          |          |          |
         # +---+----------+----------+----------+----------+
-        d_rows.append([P] + pad * ['-'] +
+        d_rows.append([P] + pad * [0] +
                 map(du, dist[:groups]))
 
         # +---+----------+----------+----------+----------+
@@ -225,7 +224,15 @@ def blob_analysis \
         # | 1 |          |          |          |          |
         # | 2 |          |          |          |          |
         # +---+----------+----------+----------+----------+
-        s_rows.append([P] + pad * ['-'] +
+        cd_rows.append([P] + pad * [0] +
+                map(du, cdist[:groups]))
+
+        # +---+----------+----------+----------+----------+
+        # | 0 |          |          |          |          |
+        # | 1 |          |          |          |          |
+        # | 2 |          |          |          |          |
+        # +---+----------+----------+----------+----------+
+        s_rows.append([P] + pad * [0] +
                 [du(d) / tu(dt) for d, dt in zip(dist[:groups], time)])
 
         # +---+----------+----------+----------+----------+
@@ -236,7 +243,7 @@ def blob_analysis \
         b_rows.append([P] + pad * ['-'] +
                 [fmt_s([tu(b - beginning.msec) for b in bs]) for bs in bounds[:groups]])
 
-    return g_rows + [[]] + d_rows + [[]] + s_rows + [[]] + b_rows
+    return g_rows + [[]] + d_rows + [[]] + cd_rows + [[]] + s_rows + [[]] + b_rows
 
 def write_table(outfile, table_data):
     with open(outfile, mode='wb') as fd:
