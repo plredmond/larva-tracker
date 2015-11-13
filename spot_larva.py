@@ -32,9 +32,22 @@ import lib.iterutils as iterutils
 import lib.color as color
 import lib.util as util
 
+def swatch(args):
+    i, (color_name, color) = args
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 0.5
+    rows = 18
+    rect_offset_cols = 64
+    im = numpy.ndarray((rows, 192, 3), numpy.uint8)
+    im.fill(255)
+    cv2.rectangle(im, (rect_offset_cols, 0), (rect_offset_cols + rows, rows), color, -1)
+    cv2.putText(im, 'Path ' + str(i), (2, rows - 4), font, font_scale, 0)
+    cv2.putText(im, color_name, (rect_offset_cols + rows + 2, rows - 4), font, font_scale, 0)
+    return im
+
 def blob_tracking(filepath, beginning, frame_count, flagger, stream, debug=None):
     span_count = frame_count - 1
-    color_lib = color.ResourceLibrary(color.alphabet())
+    color_lib = color.ResourceLibrary({name: tuple(reversed(c)) for name, c in color.alphabet()})
     path_borrower = lambda path: id(path[0]) # FIXME: hax
     def annot_analysis(dst, paths):
         for pth in paths:
@@ -68,21 +81,27 @@ def blob_tracking(filepath, beginning, frame_count, flagger, stream, debug=None)
             ns.secs.add(sec)
 
             # generate colors image
-            outfile = '{}_resultT{T:.3}.png'.format(filepath, T=t)
+            outfile = '{}_result-T{T:.3}.png'.format(filepath, T=t)
             print('= Writing', outfile)
             filtered_paths = iterutils.remove(flagger, paths)
-
-            # release unused colors; make color-generation fn
+            # release unused colors
             path_borrowers = map(path_borrower, filtered_paths)
             map(color_lib.kaesu, set(ns.previous_path_borrowers) - set(path_borrowers))
             ns = ns._replace(previous_path_borrowers = path_borrowers)
+            # make color image fn
             def gen_colors(dst, ps):
                 numpy.copyto(dst, fi.image)
                 numpy.copyto(dst, (dst * 0.25 + 255 * 0.75).astype(numpy.uint8))
                 annot_colors(dst, ps, map(color_lib.kariru, path_borrowers))
+            # make image
             gen_analysis(ns.out[:,:fi.image.shape[1]], filtered_paths)
             gen_colors(ns.out[:,fi.image.shape[1]:], filtered_paths)
             cv2.imwrite(outfile, ns.out)
+
+            if span_i == span_count:
+                cv2.imwrite('{}_result-colors.png'.format(filepath),
+                        numpy.concatenate(map(swatch,
+                            enumerate(map(color_lib.query, path_borrowers))), axis=0))
 
         yield ([ns.analysis], paths)
 
@@ -568,7 +587,7 @@ def main(args):
         print('! Warning: Using only petri dish for scale because --no-coin was given.')
 
     # save debug image w/ coin & petri dish
-    cv2.imwrite(source_pathroot + '_result.png', debug_image)
+    cv2.imwrite(source_pathroot + '_result-circles.png', debug_image)
 
     # TODO: clean up these- use box, or make a circle class?
     _, ((cbbx, cbby), (cbbw, cbbh)), cc = circle_bb \

@@ -75,7 +75,7 @@ class ResourceLibrary(object):
     def kariru(self, borrower, resource_name=None):
         '''hashable, Maybe<ResourceName> -> Resource '''
         # give 'em the resource in case they forgot
-        item = self._borrows.get(borrower)
+        item = self.query(borrower)
         if item is not None:
             return item[1]
         # give 'em a new item if possible
@@ -85,6 +85,10 @@ class ResourceLibrary(object):
             resource = self.__reserve_resource(resource_name)
         self.__check_out_resource(borrower, resource_name, resource)
         return resource
+
+    def query(self, borrower):
+        '''hashable -> Maybe<(ResourceName, Resource)>'''
+        return self._borrows.get(borrower)
 
     def kaesu(self, borrower):
         resource_name, resource = self._borrows.pop(borrower)
