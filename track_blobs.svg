@@ -16,7 +16,7 @@
    version="1.1"
    inkscape:version="0.91 r13725"
    sodipodi:docname="track_blobs.svg"
-   inkscape:export-filename="/Users/grav/Dropbox/shared/lisa/larva_gfx/track_blobs_AL.png"
+   inkscape:export-filename="/Users/grav/Dropbox/shared/lisa/larva_gfx/track_blobs_A.png"
    inkscape:export-xdpi="90"
    inkscape:export-ydpi="90">
   <defs
@@ -547,7 +547,7 @@
      inkscape:cx="750.00002"
      inkscape:cy="675"
      inkscape:document-units="px"
-     inkscape:current-layer="layer3"
+     inkscape:current-layer="layer2"
      showgrid="true"
      showborder="true"
      inkscape:snap-object-midpoints="true"
@@ -583,7 +583,7 @@
         <dc:format>image/svg+xml</dc:format>
         <dc:type
            rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
-        <dc:title></dc:title>
+        <dc:title />
       </cc:Work>
     </rdf:RDF>
   </metadata>
@@ -954,25 +954,20 @@
        id="text5221"
        sodipodi:linespacing="125%"><tspan
          sodipodi:role="line"
-         id="tspan5223"
          x="546.46448"
          y="-215.17732"
-         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:monospace;-inkscape-font-specification:monospace">[Blob A</tspan><tspan
+         id="tspan5225"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:monospace;-inkscape-font-specification:monospace">[Blob A,</tspan><tspan
          sodipodi:role="line"
          x="546.46448"
          y="-165.17732"
-         id="tspan5225"
-         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:monospace;-inkscape-font-specification:monospace">,Blob B</tspan><tspan
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:monospace;-inkscape-font-specification:monospace"
+         id="tspan5249"> Blob B,</tspan><tspan
          sodipodi:role="line"
          x="546.46448"
          y="-115.17732"
          style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:monospace;-inkscape-font-specification:monospace"
-         id="tspan5245">,Blob C</tspan><tspan
-         sodipodi:role="line"
-         x="546.46448"
-         y="-65.177322"
-         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:monospace;-inkscape-font-specification:monospace"
-         id="tspan5249">]</tspan></text>
+         id="tspan4389"> Blob C]</tspan></text>
     <text
        xml:space="preserve"
        style="font-style:normal;font-weight:normal;font-size:40px;line-height:125%;font-family:sans-serif;letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
@@ -1109,30 +1104,25 @@
        style="font-style:normal;font-weight:normal;font-size:40px;line-height:125%;font-family:sans-serif;letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
        xml:space="preserve"><tspan
          style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:monospace;-inkscape-font-specification:monospace"
+         id="tspan7221"
          y="235.03754"
          x="546.46448"
-         id="tspan7219"
-         sodipodi:role="line">[Match A</tspan><tspan
+         sodipodi:role="line">[Match A,</tspan><tspan
+         id="tspan7223"
          style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:monospace;-inkscape-font-specification:monospace"
-         id="tspan7221"
          y="285.03754"
          x="546.46448"
-         sodipodi:role="line">,Match B</tspan><tspan
-         id="tspan7223"
+         sodipodi:role="line"> Match B,</tspan><tspan
+         id="tspan7225"
          style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:monospace;-inkscape-font-specification:monospace"
          y="335.03754"
          x="546.46448"
-         sodipodi:role="line">,Match C</tspan><tspan
+         sodipodi:role="line"> Match C,</tspan><tspan
          style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:monospace;-inkscape-font-specification:monospace"
          y="385.03754"
          x="546.46448"
          sodipodi:role="line"
-         id="tspan7258">,Blob D</tspan><tspan
-         id="tspan7225"
-         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:monospace;-inkscape-font-specification:monospace"
-         y="435.03754"
-         x="546.46448"
-         sodipodi:role="line">]</tspan></text>
+         id="tspan4381"> Blob D]</tspan></text>
     <text
        sodipodi:linespacing="125%"
        id="text7227"
@@ -1197,30 +1187,25 @@
        id="text22113"
        sodipodi:linespacing="125%"><tspan
          sodipodi:role="line"
-         id="tspan22115"
          x="546.46448"
          y="685.0376"
-         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:monospace;-inkscape-font-specification:monospace">[Match A</tspan><tspan
+         id="tspan22117"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:monospace;-inkscape-font-specification:monospace">[Match A,</tspan><tspan
          sodipodi:role="line"
          x="546.46448"
          y="735.0376"
-         id="tspan22117"
-         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:monospace;-inkscape-font-specification:monospace">,Match B</tspan><tspan
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:monospace;-inkscape-font-specification:monospace"
+         id="tspan4397"> Match B,</tspan><tspan
          sodipodi:role="line"
          x="546.46448"
          y="785.0376"
          style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:monospace;-inkscape-font-specification:monospace"
-         id="tspan22119">,Flow C</tspan><tspan
-         id="tspan22121"
+         id="tspan22123"> Flow C,</tspan><tspan
          sodipodi:role="line"
          x="546.46448"
          y="835.0376"
-         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:monospace;-inkscape-font-specification:monospace">,Match D</tspan><tspan
-         sodipodi:role="line"
-         x="546.46448"
-         y="885.0376"
          style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:monospace;-inkscape-font-specification:monospace"
-         id="tspan22123">]</tspan></text>
+         id="tspan4405"> Match D]</tspan></text>
     <text
        xml:space="preserve"
        style="font-style:normal;font-weight:normal;font-size:40px;line-height:125%;font-family:sans-serif;letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
