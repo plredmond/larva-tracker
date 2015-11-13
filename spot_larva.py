@@ -32,23 +32,24 @@ import lib.iterutils as iterutils
 import lib.color as color
 import lib.util as util
 
-
 def blob_tracking(filepath, beginning, frame_count, flagger, stream, debug=None):
-    S = collections.namedtuple('S', 'secs analysis colors out')
-
     span_count = frame_count - 1
-
-    # TODO: do annotation here instead of trblobs.trackBlobs
-    # TODO: compose the penny into the top left of the frames before they are displayed
-
+    color_lib = color.ResourceLibrary(color.alphabet())
+    path_borrower = lambda path: id(path[0]) # FIXME: hax
+    def annot_analysis(dst, paths):
+        for pth in paths:
+            trblobs.annot_hist(dst, pth)
+    def annot_colors(dst, paths, colors):
+        for pth, col in zip(paths, colors):
+            trblobs.annot_hist(dst, pth, point=False, color=col, thickness=4)
     ns = None
-
     for span_i, (fi, paths) in enumerate(stream):
         print('> {}/{} tracking {} paths'.format(span_i, span_count, len(paths)))
 
         if ns is None:
-            ns = S\
+            ns = collections.namedtuple('NS', 'secs previous_path_borrowers analysis colors out')\
                 ( secs = set()
+                , previous_path_borrowers = []
                 , analysis = numpy.empty_like(fi.image)
                 , colors = numpy.empty_like(fi.image)
                 , out = numpy.hstack([numpy.empty_like(fi.image), numpy.empty_like(fi.image)])
@@ -57,33 +58,33 @@ def blob_tracking(filepath, beginning, frame_count, flagger, stream, debug=None)
         t = max(pth[-1].frameinfo.msec - beginning.msec for pth in paths) / 1000
         sec = int(t)
 
-        # assign colors to all paths
-        # TODO
-
-        # generate colors image
-        # TODO
-        #numpy.copyto(ns.colors, fi.image)
-        #for each path
-        #trblobs.annot_hist(ns.colors, annotate_point=False, color=..., thickness=5)
-
         # generate analysis image
-        numpy.copyto(ns.analysis, fi.image)
-        [trblobs.annot_hist(ns.analysis, p) for p in paths]
+        def gen_analysis(dst, ps):
+            numpy.copyto(dst, fi.image)
+            annot_analysis(dst, ps)
+        gen_analysis(ns.analysis, paths)
 
         if sec not in ns.secs or span_i == span_count:
             ns.secs.add(sec)
-            # generate out image
-            filtered_paths = iterutils.remove(flagger, paths)
-            lhs = ns.out[:,:fi.image.shape[1]]
-            rhs = ns.out[:,fi.image.shape[1]:]
-            out = '{}_resultT{T:.3}.png'.format(filepath, T=t)
-            print('= Writing', out)
-            numpy.copyto(lhs, fi.image)
-            [trblobs.annot_hist(lhs, p) for p in filtered_paths]
-            numpy.copyto(rhs, fi.image)
-            cv2.imwrite(out, ns.out)
 
-        yield ([ns.analysis, ns.colors], paths)
+            # generate colors image
+            outfile = '{}_resultT{T:.3}.png'.format(filepath, T=t)
+            print('= Writing', outfile)
+            filtered_paths = iterutils.remove(flagger, paths)
+
+            # release unused colors; make color-generation fn
+            path_borrowers = map(path_borrower, filtered_paths)
+            map(color_lib.kaesu, set(ns.previous_path_borrowers) - set(path_borrowers))
+            ns = ns._replace(previous_path_borrowers = path_borrowers)
+            def gen_colors(dst, ps):
+                numpy.copyto(dst, fi.image)
+                numpy.copyto(dst, (dst * 0.25 + 255 * 0.75).astype(numpy.uint8))
+                annot_colors(dst, ps, map(color_lib.kariru, path_borrowers))
+            gen_analysis(ns.out[:,:fi.image.shape[1]], filtered_paths)
+            gen_colors(ns.out[:,fi.image.shape[1]:], filtered_paths)
+            cv2.imwrite(outfile, ns.out)
+
+        yield ([ns.analysis], paths)
 
 
 def split_path(beginning, path):

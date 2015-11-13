@@ -12,7 +12,7 @@ from __future__ import \
 # https://eleanormaclure.files.wordpress.com/2011/03/colour-coding.pdf
 # https://en.wikipedia.org/wiki/Help:Distinguishable_colors
 
-alphabet = \
+__alphabet = \
     [ ('(white background assumed)', (255,255,255))
     , ('Amethyst', (240,163,255))
     , ('Blue', (0,117,220))
@@ -41,5 +41,53 @@ alphabet = \
     , ('Yellow', (255,255,0))
     , ('Zinnia', (255,80,5))
     ]
+
+alphabet = lambda: __alphabet[:]
+
+class ResourceLibrary(object):
+    '''Resource pool request resolution.
+
+       Not threadsafe.
+    '''
+    class LibraryIsEmpty(Exception): pass
+    class ResourceInUseException(Exception): pass
+
+    def __init__(self, stock):
+        '''{ResourceName: Resource} -> ResourceLibrary'''
+        self._stocked = dict(stock) # {ResourceName: Resource}
+        self._borrows = dict() # {hashable: (ResourceName, Resource)}
+
+    def __reserve_resource(self, resource_name):
+        try:
+            return self._stocked.pop(resource_name)
+        except KeyError:
+            raise self.ResourceInUseException(resource_name)
+
+    def __reserve_any_resource(self):
+        try:
+            return self._stocked.popitem()
+        except KeyError:
+            raise self.LibraryIsEmpty()
+
+    def __check_out_resource(self, borrower, resource_name, resource):
+        self._borrows[borrower] = (resource_name, resource)
+
+    def kariru(self, borrower, resource_name=None):
+        '''hashable, Maybe<ResourceName> -> Resource '''
+        # give 'em the resource in case they forgot
+        item = self._borrows.get(borrower)
+        if item is not None:
+            return item[1]
+        # give 'em a new item if possible
+        if resource_name is None:
+            resource_name, resource = self.__reserve_any_resource()
+        else:
+            resource = self.__reserve_resource(resource_name)
+        self.__check_out_resource(borrower, resource_name, resource)
+        return resource
+
+    def kaesu(self, borrower):
+        resource_name, resource = self._borrows.pop(borrower)
+        self._stocked[resource_name] = resource
 
 # eof

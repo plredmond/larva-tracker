@@ -174,8 +174,8 @@ def anchor_path_group(pg, detect, ti, match_dist=100):
 def annot(im, path):
     annot_point(im, path[-1])
 
-def annot_hist(im, path, annotate_point=True, **kwargs):
-    if annotate_point:
+def annot_hist(im, path, point=True, **kwargs):
+    if point:
         annot_point(im, path[-1])
     map(functools.partial(annot_segment, im, **kwargs),
             iterutils.slidingWindow(2, path))
@@ -188,8 +188,8 @@ def annot_point(im, point):
         cv2.circle(im, tuple(point.pt), point.error, (50,50,255))
 
 def annot_segment(im, points, color=None, thickness=None):
+    p0, p1 = points
     if color is None:
-        p0, p1 = points
         color = \
             { (BlobPoint, BlobPoint): (0, 0, 0) # black
             , (FlowPoint, FlowPoint): (50,50,255) # deep red
