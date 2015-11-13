@@ -12,9 +12,10 @@ from __future__ import \
 # https://eleanormaclure.files.wordpress.com/2011/03/colour-coding.pdf
 # https://en.wikipedia.org/wiki/Help:Distinguishable_colors
 
+# ('(white background assumed)', (255,255,255))
+# alphabet is RGB
 __alphabet = \
-    [ ('(white background assumed)', (255,255,255))
-    , ('Amethyst', (240,163,255))
+    [ ('Amethyst', (240,163,255))
     , ('Blue', (0,117,220))
     , ('Caramel', (153,63,0))
     , ('Damson', (76,0,92))

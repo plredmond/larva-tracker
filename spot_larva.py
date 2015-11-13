@@ -35,14 +35,16 @@ import lib.util as util
 def swatch(args):
     i, (color_name, color) = args
     font = cv2.FONT_HERSHEY_SIMPLEX
-    font_scale = 0.5
-    rows = 18
-    rect_offset_cols = 64
+    font_scale = 0.58
+    bottom_margin = 6
+    left_margin = 4
+    rows = 22
+    rect_offset_cols = 70
     im = numpy.ndarray((rows, 192, 3), numpy.uint8)
     im.fill(255)
     cv2.rectangle(im, (rect_offset_cols, 0), (rect_offset_cols + rows, rows), color, -1)
-    cv2.putText(im, 'Path ' + str(i), (2, rows - 4), font, font_scale, 0)
-    cv2.putText(im, color_name, (rect_offset_cols + rows + 2, rows - 4), font, font_scale, 0)
+    cv2.putText(im, 'Path ' + str(i), (left_margin, rows - bottom_margin), font, font_scale, 0)
+    cv2.putText(im, color_name, (rect_offset_cols + rows + left_margin, rows - bottom_margin), font, font_scale, 0)
     return im
 
 def blob_tracking(filepath, beginning, frame_count, flagger, stream, debug=None):
