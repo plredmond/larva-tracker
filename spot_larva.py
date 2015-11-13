@@ -100,12 +100,7 @@ def blob_tracking(filepath, beginning, frame_count, flagger, stream, debug=None)
             gen_colors(ns.out[:,fi.image.shape[1]:], filtered_paths)
             cv2.imwrite(outfile, ns.out)
 
-            if span_i == span_count:
-                cv2.imwrite('{}_result-colors.png'.format(filepath),
-                        numpy.concatenate(map(swatch,
-                            enumerate(map(color_lib.query, path_borrowers))), axis=0))
-
-        yield ([ns.analysis], paths)
+        yield ([ns.analysis], (paths, color_lib, path_borrowers))
 
 
 def split_path(beginning, path):
@@ -647,8 +642,14 @@ def main(args):
     # consume the stream & run final analysis
     with window_maker as window:
         ret = cviter.displaySink(window, disp, ending=False)
-    paths = iterutils.remove(flagger, ret.result)
-    # TODO: move this ^ into track_blobs -- just filter paths on the last frame or smth
+    _, color_lib, path_borrowers = ret.result
+    paths = iterutils.remove(flagger, ret.result[0])
+
+    # save color legend
+    cv2.imwrite('{}_result-colors.png'.format(source_pathroot),
+            numpy.concatenate(map(swatch,
+                enumerate(map(color_lib.query, path_borrowers))), axis=0))
+
     print('= Fully consumed' if ret.fully_consumed else '= Early termination')
     print('= {} paths'.format(len(paths)))
 
