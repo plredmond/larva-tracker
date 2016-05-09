@@ -135,6 +135,7 @@ class Capture(object):
         '''float'''
         return self.__video_capture.get(cv2.cv.CV_CAP_PROP_FPS)
 
+    # FIXME: there seems to be a bug where this isn't consistent accross linux/mac
     @property
     def frame_count(self):
         '''int'''
@@ -160,6 +161,7 @@ class Capture(object):
 
     FrameInfo = collections.namedtuple('FrameInfo', 'index msec image')
 
+    # FIXME: there seems to be a bug where this isn't consistent accross linux/mac
     @staticmethod
     def _read_frame_info(video_capture):
         '''cv2.VideoCapture -> FrameInfo/None

@@ -79,6 +79,7 @@ def blob_tracking(filepath, beginning, frame_count, flagger, stream, debug=None)
             annot_analysis(dst, ps)
         gen_analysis(ns.analysis, paths)
 
+        # FIXME: there is a bug here somewhere with span_count; perhaps related to the different frame starting number on mac/linux
         if sec not in ns.secs or span_i == span_count:
             ns.secs.add(sec)
 
@@ -756,7 +757,7 @@ if __name__ == '__main__':
         ( '--no-coin'
         , dest='coin'
         , action = 'store_false'
-        , help = '''If there is no coin in the movie, give this option to skip searching for one (and rely solely on petri-dish size.''')
+        , help = '''If there is no coin in the movie, give this option to skip searching for one (and rely solely on petri-dish size).''')
     p.add_argument \
         ( '-wh'
         , '--window-height'
