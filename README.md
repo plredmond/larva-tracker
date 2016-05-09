@@ -2,7 +2,9 @@
 
 1. ## Purpose
 
-    todo
+    ![track larva](larva.gif)
+
+    Output includes detailed tables of speed and distance traveled at specific times.
 
 1. ## [Setup](SETUP.md)
 
