@@ -617,8 +617,8 @@ def main(args):
              , "filterByInertia": False
              , "filterByColor": False
              , "filterByArea": True
-             , "minArea": 50.0
-             , "maxArea": 250.0
+             , "minArea": args.min_blob_area
+             , "maxArea": args.max_blob_area
              }
     disp = blob_tracking \
         ( source_pathroot
@@ -676,6 +676,8 @@ sentinel = \
 
 default = \
     { 'flow_fraction' : 0.4
+    , 'min_blob_area': 50.0
+    , 'max_blob_area': 250.0
     }
 
 def flow_fraction(f_str):
@@ -748,6 +750,18 @@ if __name__ == '__main__':
         , type = flow_fraction
         , default = default['flow_fraction']
         , help = '''Allowed portion of a path which is optical-flow. (default: {:g})'''.format(default['flow_fraction']))
+    p.add_argument \
+        ( '--min-blob-area'
+        , metavar = 'a'
+        , type = float
+        , default = default['min_blob_area']
+        , help = '''Minimum area of blobs detected by the SimpleBlobDetector. (default {:g})'''.format(default['min_blob_area']))
+    p.add_argument \
+        ( '--max-blob-area'
+        , metavar = 'a'
+        , type = float
+        , default = default['max_blob_area']
+        , help = '''Maximum area of blobs detected by the SimpleBlobDetector. (default {:g})'''.format(default['max_blob_area']))
     p.add_argument \
         ( '-d'
         , '--debug'
