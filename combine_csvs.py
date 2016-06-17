@@ -46,8 +46,9 @@ def main(args):
     csvs = [load_one(open(fp, 'rb')) for fp in sorted(args.filepaths)]
     assert all(csvs[0].viewkeys() == c.viewkeys() for c in csvs), 'all csvs have same keys'
     assert all(csvs[0]['metadata'].viewkeys() == c['metadata'].viewkeys() for c in csvs), 'all csvs have same meta keys'
-    print('outputting to', path)
-    assert raw_input('y/n> ') in {'y', 'yes', 'Y', 'Yes'}
+    print('Overwriting "overall" csvs at', path)
+    if args.interactive:
+        assert raw_input('y/n> ') in {'y', 'yes', 'Y', 'Yes'}
     with open(os.path.join(path, 'overall-meta.csv'), mode='wb') as fd:
         w = csv.DictWriter(fd, sorted(csvs[0]['metadata'].keys(), key=lambda k: len(csvs[0]['metadata'][k])), dialect='excel')
         w.writeheader()
@@ -72,6 +73,12 @@ if __name__ == '__main__':
         ( 'filepaths'
         , metavar = 'csv'
         , nargs = '+'
+        )
+    p.add_argument \
+        ( '-y'
+        , '--non-interactive'
+        , dest = 'interactive'
+        , action = 'store_false'
         )
     exit(main(p.parse_args()))
 
