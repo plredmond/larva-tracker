@@ -617,8 +617,8 @@ def main(args):
              , "filterByInertia": False
              , "filterByColor": False
              , "filterByArea": True
-             , "minArea": args.min_blob_area
-             , "maxArea": args.max_blob_area
+             , "minArea": float(args.min_blob_area / mm_per_px)
+             , "maxArea": float(args.max_blob_area / mm_per_px)
              }
     disp = blob_tracking \
         ( source_pathroot
@@ -676,8 +676,8 @@ sentinel = \
 
 default = \
     { 'flow_fraction' : 0.4
-    , 'min_blob_area': 50.0
-    , 'max_blob_area': 250.0
+    , 'min_blob_area': 10.0
+    , 'max_blob_area': 35.0
     , 'anchor_match_dist': 3.0
     }
 
@@ -753,16 +753,16 @@ if __name__ == '__main__':
         , help = '''Allowed portion of a path which is optical-flow. (default: {:g})'''.format(default['flow_fraction']))
     p.add_argument \
         ( '--min-blob-area'
-        , metavar = 'a'
+        , metavar = 'mm^2'
         , type = float
         , default = default['min_blob_area']
-        , help = '''Minimum area of blobs detected by the SimpleBlobDetector. (default {:g})'''.format(default['min_blob_area']))
+        , help = '''Minimum area of blobs detected by the SimpleBlobDetector. (default {:g}mm^2)'''.format(default['min_blob_area']))
     p.add_argument \
         ( '--max-blob-area'
-        , metavar = 'a'
+        , metavar = 'mm^2'
         , type = float
         , default = default['max_blob_area']
-        , help = '''Maximum area of blobs detected by the SimpleBlobDetector. (default {:g})'''.format(default['max_blob_area']))
+        , help = '''Maximum area of blobs detected by the SimpleBlobDetector. (default {:g}mm^2)'''.format(default['max_blob_area']))
     p.add_argument \
         ( '--anchor-match-dist'
         , metavar = 'mm'
