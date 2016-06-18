@@ -632,9 +632,9 @@ def main(args):
                 , cupetri_half
                 , flagger
                 , croppedB
-                , anchor_match_dist=20
-                , max_flow_err=20
-                , blur_size=4
+                , anchor_match_dist = args.anchor_match_dist / mm_per_px
+                , max_flow_err = 20
+                , blur_size = 4
                 , debug = args.debug == 'tracking' and args.debug
                 )
             )
@@ -678,6 +678,7 @@ default = \
     { 'flow_fraction' : 0.4
     , 'min_blob_area': 50.0
     , 'max_blob_area': 250.0
+    , 'anchor_match_dist': 3.0
     }
 
 def flow_fraction(f_str):
@@ -762,6 +763,12 @@ if __name__ == '__main__':
         , type = float
         , default = default['max_blob_area']
         , help = '''Maximum area of blobs detected by the SimpleBlobDetector. (default {:g})'''.format(default['max_blob_area']))
+    p.add_argument \
+        ( '--anchor-match-dist'
+        , metavar = 'mm'
+        , type = float
+        , default = default['anchor_match_dist']
+        , help = '''Maximum allowed distance to match a path head & a detected blob. (default {:g}mm)'''.format(default['anchor_match_dist']))
     p.add_argument \
         ( '-d'
         , '--debug'
