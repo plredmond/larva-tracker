@@ -37,12 +37,11 @@ def reify(ns_str):
 def launch(ns_str):
     ns = reify(ns_str)
     with open(ns.movie.source + '_result.txt', 'w') as fd:
-        print("Begin...", ns)
-
+        print("Begin:")
+        print(ns)
         # replace stdout
         stdout = sys.stdout
         sys.stdout = fd
-
         # run job
         try:
             spot_larva.main(ns)
@@ -54,7 +53,6 @@ def launch(ns_str):
             sys.stderr.write(tb)
         # restore stdout
         sys.stdout = stdout
-        print("End...", ns)
 
 def main(args):
     ns_strs = [munge(s) for _, s in csv.reader(args.args_file)]
