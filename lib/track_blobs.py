@@ -128,7 +128,8 @@ def anchor_path_group(pg, detect, ti, match_dist=100):
     displacement = numpy.empty((len(pg), len(bs1)))
     for P, path in enumerate(pg):
         head = numpy.array(path_loc(path))
-        displacement[P,:] = abs(blob_loc - head).sum(axis=1)
+#       displacement[P,:] = abs(blob_loc - head).sum(axis=1) # manhattan distance
+        displacement[P,:] = numpy.sqrt(((blob_loc - head) ** 2).sum(axis=1)) # euclidean distance
 
     # generate preferences of paths for blobs
     paths_prefd = {}
