@@ -55,21 +55,45 @@ def launch(ns_str):
         sys.stdout = stdout
 
 def main(args):
-    ns_strs = [munge(s) for _, s in csv.reader(args.args_file)]
+    print(args)
+    # obtain ns_strs
+    if args.args_file:
+        print('Reading', args.args_file.name)
+        ns_strs = [munge(s) for _, s in csv.reader(args.args_file)]
+    else:
+        print('Reading stdin')
+        ns_strs = [munge(ln.strip()) for ln in sys.stdin]
+    # visually verify
+    print("Reifying...")
     for s in ns_strs:
         print(reify(s))
-    assert raw_input("Okay? [y/N] ") in {'y', 'yes'}
+    # ask for confirmation
+    if args.interactive and args.args_file:
+        assert raw_input("Okay? [y/N] ") in {'y', 'yes'}
+    # replay
     print('Replaying...')
     for s in ns_strs:
         launch(s)
 
 if __name__ == '__main__':
     # args
-    p = argparse.ArgumentParser()
+    p = argparse.ArgumentParser(description='''Run (or re-run) multiple
+    spot_larva programs, storing the output in *_result.txt. If no --args-file
+    option is given, then read Namespace representations from stdin.''')
     p.add_argument \
-        ( 'args_file'
+        ( '--args-file'
         , type = open
-        , help = '''Containing args Namespace representations for spot_larva's main''')
+        , metavar = 'path'
+        , help = '''a `meta_args.txt` file as output by grepping `*_result.csv`
+        files for args which contains Namespace representations for
+        spot_larva's main function.''')
+    p.add_argument \
+        ( '--non-interactive'
+        , action = 'store_false'
+        , dest = 'interactive'
+        , help = '''Do not ask for confirmation after reifying the Namespaces
+        before starting the replay. Implied when no --args-file option is
+        given.''')
     # main
     exit(main(p.parse_args()))
 
