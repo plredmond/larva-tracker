@@ -2,7 +2,7 @@
 
 set src (echo $argv[1] | sed 's,/$,,')
 
-set dst $src/(date '+%Y-%m-%d')_result
+set dst $src/(basename $src)-data_(date '+%Y-%m-%d')-result
 set text $dst/all_text
 set images $dst/all_images
 set groups $dst/grouped_results
