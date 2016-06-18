@@ -12,6 +12,7 @@ from __future__ import \
 import sys
 import csv
 import argparse
+import traceback
 
 import lib.cvutils as cvutils
 import spot_larva
@@ -43,8 +44,14 @@ def launch(ns_str):
         sys.stdout = fd
 
         # run job
-        spot_larva.main(ns)
-
+        try:
+            spot_larva.main(ns)
+        except KeyboardInterrupt:
+            raise
+        except:
+            tb = traceback.format_exc()
+            sys.stdout.write(tb)
+            sys.stderr.write(tb)
         # restore stdout
         sys.stdout = stdout
         print("End...", ns)
