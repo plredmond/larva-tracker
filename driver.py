@@ -29,8 +29,8 @@ def reify(ns_str):
         # this argument was added
         ns.anchor_match_dist = spot_larva.default['anchor_match_dist']
         # the default value & units for this argument changed across versions
-        ns.min_blob_area = ns.min_blob_area * (10. / 50.)
-        ns.max_blob_area = ns.max_blob_area * (35. / 250.)
+        ns.min_blob_area = ns.min_blob_area * ( 7.1 /  50.)
+        ns.max_blob_area = ns.max_blob_area * (35.7 / 250.)
     return ns
 
 def launch(ns_str):
