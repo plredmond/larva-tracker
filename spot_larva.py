@@ -528,25 +528,11 @@ def main(args):
     first_frame = args.movie[args.beginning or 0]
     debug_image = first_frame.image.copy()
 
-    # petri dish for crop
-    # TODO: write magic numbers in terms of frame resolution or appropriate
-    petri_mean, _, mm_per_px_petri = CircleForScale.circle_for_scale_main \
-        ( 'petri'
-        , images(cue(step=3))
-        , 10   # min_ct
-        , 15.0 # max_std
-        , dict \
-            ( blur = 10
-            , param2 = 50
-            , minFraction = 0.8
-            , maxFraction = 1.2
-            )
-        , diameter_mm = args.petri_dish_diameter
-        , debug = args.debug
-        )
-    circles.annot_target(int(petri_mean[0]), int(petri_mean[1]), int(petri_mean[2]), debug_image)
-
-    # coin for scale
+    # (scale1) coin for scale
+    # in:
+    #   ?
+    # out:
+    #   mm_per_px_coin (used by scale3)
     if args.coin:
         # TODO: must print question on the frame somewhere
         coin_aoi, coin_frames \
@@ -557,6 +543,10 @@ def main(args):
             , images(cue(step=3))
             , cached = True
             )
+        if args.only_coin:
+            print('= Terminating after collecting (or verifying) coin area-of-interest')
+            print(coin_aoi)
+            return 0 # early termination from main
         # TODO: write magic numbers in terms of frame resolution or appropriate
         coin_mean_rel, _, mm_per_px_coin \
             = CircleForScale.circle_for_scale_main \
@@ -578,6 +568,37 @@ def main(args):
             , coin_aoi
             , numpy.concatenate([coin_aoi.pt0.xy + coin_mean_rel[:2], coin_mean_rel[2:]])
             )
+
+    # TODO: write magic numbers in terms of frame resolution or appropriate
+    # (scale2) petri dish for crop
+    # in:
+    #   ?
+    # out:
+    #   petri_mean (used several places, including for cropping the image)
+    #   mm_per_px_petri (used by scale3)
+    petri_mean, _, mm_per_px_petri = CircleForScale.circle_for_scale_main \
+        ( 'petri'
+        , images(cue(step=3))
+        , 10   # min_ct
+        , 15.0 # max_std
+        , dict \
+            ( blur = 10
+            , param2 = 50
+            , minFraction = 0.8
+            , maxFraction = 1.2
+            )
+        , diameter_mm = args.petri_dish_diameter
+        , debug = args.debug
+        )
+    circles.annot_target(int(petri_mean[0]), int(petri_mean[1]), int(petri_mean[2]), debug_image)
+
+    # (scale3) compute scale for later data generation
+    # in:
+    #   pp_per_px_petri
+    #   [mm_per_px_coin]
+    # out:
+    #   mm_per_px (used several places)
+    if args.coin:
         mm_per_px = (mm_per_px_coin + mm_per_px_petri) / 2
         print('= Average scale {:g} mm/px'.format(mm_per_px))
     else:
@@ -779,6 +800,10 @@ if __name__ == '__main__':
         , dest='coin'
         , action = 'store_false'
         , help = '''If there is no coin in the movie, give this option to skip searching for one (and rely solely on petri-dish size).''')
+    p.add_argument \
+        ( '--only-coin'
+        , action = 'store_true'
+        , help = '''Cause the program to exit after user interaction & caching of the coin's location in the frame.''')
     p.add_argument \
         ( '-wh'
         , '--window-height'
