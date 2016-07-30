@@ -353,7 +353,7 @@ class QueryAOI(object):
         mouse.annotate_box(*args, color_fn=lambda *_: (0,255,255))
         if lmb:
             mouse.annotate_quadrants(*args)
-        mouse.annotate_reticle(*args, color_fn=lambda *_: (0,0,255), size=25)
+        mouse.annotate_reticle(*args, color_fn=lambda *_: (0,0,255), size=35, thickness=3)
 
 
 class CircleForScale(object):
@@ -436,8 +436,9 @@ class CircleForScale(object):
 
     @staticmethod
     def annot_circle_extents(dst, pt, r, minFraction, maxFraction):
-        cv2.circle(dst, pt, r, (0,255,0), 2)
-        cv2.circle(dst, pt, int(r * minFraction), (0,255,255), 1)
+        # make green circle 20% smaller to encourage selection of a box that contains the coin edges
+        cv2.circle(dst, pt, int(r * 0.8), (0,255,0), 2)
+        cv2.circle(dst, pt, int(r * minFraction), (0,255,255), 2)
         cv2.circle(dst, pt, int(r * maxFraction), (0,255,255), 1)
 
 
@@ -560,8 +561,8 @@ def main(args):
         coin_iter_conf = dict \
             ( blur = 8
             , param2 = 25
-            , minFraction = 0.65
-            , maxFraction = 1.5
+            , minFraction = 0.5
+            , maxFraction = 1.4
             )
         # TODO: must print question on the frame somewhere
         coin_aoi, coin_frames \

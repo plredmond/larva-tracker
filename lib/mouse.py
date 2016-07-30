@@ -81,11 +81,12 @@ def annotate_quadrants(dst, lmb, xy, pts, color_fn=None):
     cv2.line(dst, (0, y), (xm, y), c)
     cv2.line(dst, (x, 0), (x, ym), c)
 
-def annotate_reticle(dst, lmb, xy, pts, color_fn=None, size=None):
+def annotate_reticle(dst, lmb, xy, pts, color_fn=None, size=None, thickness=None):
+    t = 1 if thickness is None else thickness
     s = 4 if size is None else size
     c = (color_fn or pulse)(dst, lmb, xy, pts)
     x, y = xy
-    cv2.line(dst, (x - s, y), (x + s, y), c)
-    cv2.line(dst, (x, y - s), (x, y + s), c)
+    cv2.line(dst, (x - s, y), (x + s, y), c, t)
+    cv2.line(dst, (x, y - s), (x, y + s), c, t)
 
 # eof
