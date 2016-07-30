@@ -275,27 +275,28 @@ def write_table(outfile, table_data):
 class QueryAOI(object):
 
     @classmethod
-    def query_aoi_main(cls, filepath, codeword, windower, raw_frames, cached=False):
-        '''str, str, WindowMaker, iter<numpy.array>[, bool] -> AOI, iter<numpy.array>
+    def query_aoi_main(cls, filepath, codeword, windower, raw_frames, cached=False, annotator=None):
+        '''str, str, WindowMaker, iter<numpy.array>[, bool][, MouseQuery-annotator] -> AOI, iter<numpy.array>
 
            Load the AOI for `codeword` from the cache for `filepath` or fall back querying the user.
            Crop the stream of frames.
         '''
+        annot = cls.annot_bqr if annotator is None else annotator
         if cached:
             # read cache or ask user, conditionally save cache
             aoiM = cls.query_aoi_cache(filepath, codeword)
             if aoiM is None:
-                aoi_frames = cls.ask_for_aoi(windower, raw_frames)
+                aoi_frames = cls.ask_for_aoi(windower, raw_frames, annot)
                 cls.save_aoi_cache(filepath, codeword, aoi_frames[0])
                 return aoi_frames
             else:
                 return aoiM, cls.apply_aoi(aoiM, raw_frames)
         else:
-            return cls.ask_for_aoi(windower, raw_frames)
+            return cls.ask_for_aoi(windower, raw_frames, annot)
 
     @classmethod
-    def ask_for_aoi(cls, windower, raw_frames):
-        '''WindowMaker, iter<numpy.array> -> Box, iter<numpy.array>
+    def ask_for_aoi(cls, windower, raw_frames, annotator):
+        '''WindowMaker, iter<numpy.array>, MouseQuery-annotator -> Box, iter<numpy.array>
 
            Query the user for their area of interest. Return it and a stream of cropped frames.
         '''
@@ -308,7 +309,7 @@ class QueryAOI(object):
                     ( ow
                     , first
                     , point_count = 2
-                    , annot_fn = cls.annot_bqr
+                    , annot_fn = annotator
                     ) as query:
                 pts = query()
         x0, x1 = sorted(max(col, 0) for col,_ in pts)
@@ -416,6 +417,28 @@ class CircleForScale(object):
     def annot_coin_result(dst, box, circle):
         box.rectangle(dst, (0,255,255))
         circles.annot_target(int(circle[0]), int(circle[1]), int(circle[2]), dst)
+
+    @classmethod
+    def mk_annot_bqrc(cls, minFraction=None, maxFraction=None, **_):
+        def annot_bqrc(*args):
+            QueryAOI.annot_bqr(*args)
+            dst, lmb, xy, pts = args
+            if pts:
+                box = numpy.array([pts[-1], xy])
+                cls.annot_circle_extents \
+                    ( dst
+                    , tuple(box.mean(axis=0).round().astype(int))
+                    , abs(box[1] - box[0]).min() // 2
+                    , minFraction
+                    , maxFraction
+                    )
+        return annot_bqrc
+
+    @staticmethod
+    def annot_circle_extents(dst, pt, r, minFraction, maxFraction):
+        cv2.circle(dst, pt, r, (0,255,0), 2)
+        cv2.circle(dst, pt, int(r * minFraction), (0,255,255), 1)
+        cv2.circle(dst, pt, int(r * maxFraction), (0,255,255), 1)
 
 
 # images : iter<frameinfo> -> iter<numpy.array>
@@ -534,6 +557,12 @@ def main(args):
     # out:
     #   mm_per_px_coin (used by scale3)
     if args.coin:
+        coin_iter_conf = dict \
+            ( blur = 8
+            , param2 = 25
+            , minFraction = 0.65
+            , maxFraction = 1.5
+            )
         # TODO: must print question on the frame somewhere
         coin_aoi, coin_frames \
             = QueryAOI.query_aoi_main \
@@ -542,6 +571,7 @@ def main(args):
             , window_maker
             , images(cue(step=3))
             , cached = True
+            , annotator = CircleForScale.mk_annot_bqrc(**coin_iter_conf)
             )
         if args.only_coin:
             print('= Terminating after collecting (or verifying) coin area-of-interest')
@@ -554,12 +584,7 @@ def main(args):
             , coin_frames
             , 15   # min_ct
             , 3.25 # max_std
-            , dict \
-                ( blur = 8
-                , param2 = 25
-                , minFraction = 0.5
-                , maxFraction = 1.5
-                )
+            , coin_iter_conf
             , diameter_mm = args.coin_diameter
             , debug = args.debug
             )
