@@ -34,9 +34,11 @@ end > $dst/meta_T3.html
 
 set groupnames (cat $src/meta_group*.txt | python2 -c '''
 import sys,re
-for line in (ln.strip() for ln in sys.stdin):
-    folder = re.sub(r"[^-\w,]", "", line.replace(":","-"))
-    print folder
+for line in (ln.strip() for ln in sys.stdin if ln.strip()):
+    group, _, members = line.partition(":")
+    group = re.sub(r"\W", "_", group)
+    members = re.sub(r"[^,\d]", "", members)
+    print group + "-" + members
 ''')
 echo === Identified groups $groupnames
 
