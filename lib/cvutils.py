@@ -320,8 +320,11 @@ def explain(msg, im, pr=False):
 
 def liken(ims0):
     ''' make dissimilar images similar enough to display with imshow '''
-    assert all(map(lambda im: im.ndim == 3, ims0)), 'liken currently only supports arrays with ndim==3, got {}'.format(map(lambda im: im.shape, ims0))
+    assert all(map(lambda im: im.ndim in {2,3}, ims0)), 'liken only supports arrays with ndim==2 or ndim==3, got {}'.format(map(lambda im: im.shape, ims0))
     assert all(map(lambda im: im.dtype == ims0[0].dtype, ims0)), 'liken currently only supports groups of arrays with the same dtype, got {}'.format(map(lambda im: im.dtype, ims0))
+    # [overwrite ims0] force single-channel images to have ndim==3
+    ims0 = [im[..., None] if im.ndim == 2 else im for im in ims0]
+    # find the maximum width (x), height (y) and depth(d) among the images
     tx, ty, td = reduce(lambda whd, im: map(max, zip(whd, im.shape)), ims0, [0,0,0])
     template = numpy.zeros([tx, ty, td], ims0[0].dtype)
     if td > 3:
