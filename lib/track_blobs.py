@@ -253,7 +253,7 @@ def trackBlobs \
     # blob input can be anything
     blobInput = cviter.buffering \
         ( 2
-        , cviter.lift \
+        , frameinfosAframesA if blur_size is None or blur_size < 1 else cviter.lift \
             ( lambda fr, out: cv2.blur(fr, (blur_size, blur_size), out)
             , frameinfosAframesA
             )
