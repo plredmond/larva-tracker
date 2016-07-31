@@ -447,7 +447,10 @@ images = functools.partial(itertools.imap, lambda fi: fi.image)
 
 
 def applyto_images(frameinfos, fn):
-    '''iter<FrameInfo>, [iter<numpy.array> -> iter<numpy.array>] -> iter<FrameInfo>'''
+    '''iter<FrameInfo>, [iter<numpy.array> -> iter<numpy.array>] -> iter<FrameInfo>
+
+       Same as cviter.applyTo, but specified to operate only on the image component of frameinfos.
+    '''
     return cviter.applyTo \
         ( lambda fi: fi.image
         , lambda fi, im: fi._replace(image=im)
@@ -644,6 +647,7 @@ def main(args):
     cupetri = numpy.concatenate((cc, petri_mean[2:]))
     cupetri_half = numpy.concatenate((cupetri[:2], 0.5 * cupetri[2:]))
 
+    # crop to the petri-dish circle
     croppedA, croppedB = itertools.tee \
         ( applyto_images \
             ( cue()
