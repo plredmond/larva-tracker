@@ -58,7 +58,10 @@ def blob_tracking(filepath, beginning, frame_count, flagger, stream, debug=None)
         for pth, col in zip(paths, colors):
             trblobs.annot_hist(dst, pth, point=False, color=col, thickness=4)
     ns = None
-    for span_i, (fi, paths) in enumerate(stream):
+    # span_i ranges inclusive over [0 .. len(stream) - 1]
+    #   -> we have it start at 1, so it ranges over [1 .. len(stream)]
+    # span_count is the number of between-frame moments
+    for span_i, (fi, paths) in enumerate(stream, 1):
         print('> {}/{} tracking {} paths'.format(span_i, span_count, len(paths)))
 
         if ns is None:
