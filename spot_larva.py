@@ -663,14 +663,22 @@ def main(args):
 
     # track
     flagger = trblobs.gen_flagger(cupetri_half, args.max_flow_fraction)
-    params = { "filterByConvexity": False
-             , "filterByCircularity": False
-             , "filterByInertia": False
-             , "filterByColor": False
-             , "filterByArea": True
-             , "minArea": float(args.min_blob_area / mm_per_px)
-             , "maxArea": float(args.max_blob_area / mm_per_px)
-             }
+    # params still set to their opencv defaults:
+    #   minRepeatability
+    #   thresholdStep
+    #   minDistBetweenBlobs
+    params = dict \
+        ( filterByConvexity = False
+        , filterByCircularity = False
+        , filterByInertia = False
+        , filterByColor = False
+        , filterByArea = True
+        , minArea = float(args.min_blob_area / mm_per_px)
+        , maxArea = float(args.max_blob_area / mm_per_px)
+        # detect min/max threshold from image brightness?
+        , minThreshold =  50.0
+        , maxThreshold = 250.0
+        )
     disp = blob_tracking \
         ( source_pathroot
         , first_frame
@@ -685,6 +693,7 @@ def main(args):
                 , croppedB
                 , anchor_match_dist = args.anchor_match_dist / mm_per_px
                 , max_flow_err = 20
+                # detect blur_size from mm_per_px?
                 , blur_size = 4
                 , debug = args.debug == 'tracking' and args.debug
                 )
