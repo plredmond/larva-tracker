@@ -681,6 +681,7 @@ def main(args):
         # detect min/max threshold from image brightness?
         , minThreshold =  50.0
         , maxThreshold = 250.0
+        , thresholdStep = 5.0
         )
     disp = blob_tracking \
         ( source_pathroot
