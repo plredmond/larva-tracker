@@ -47,16 +47,26 @@ def swatch(args):
     cv2.putText(im, color_name, (rect_offset_cols + rows + left_margin, rows - bottom_margin), font, font_scale, 0)
     return im
 
+def annot_analysis(dst, src, paths):
+    numpy.copyto(dst, src)
+    for pth in paths:
+        trblobs.annot_hist(dst, pth)
+
+def annot_colors(dst, src, paths, colors):
+    numpy.copyto(dst, src)
+    numpy.copyto(dst, (dst * 0.25 + 255 * 0.75).astype(numpy.uint8))
+    for pth, col in zip(paths, colors):
+        trblobs.annot_hist(dst, pth, point=False, color=col, thickness=4)
+
+def analysis_and_color_image(dst, src, paths):
+    annot_analysis(dst[:,:src.shape[1]], src, paths)
+    annot_colors(dst[:,src.shape[1]:], src, paths,
+            map(color_lib.kariru, path_borrowers))
+
 def blob_tracking(filepath, beginning, frame_count, flagger, stream, debug=None):
     span_count = frame_count - 1
     color_lib = color.ResourceLibrary({name: tuple(reversed(c)) for name, c in color.alphabet()})
     path_borrower = lambda path: id(path[0]) # FIXME: hax
-    def annot_analysis(dst, paths):
-        for pth in paths:
-            trblobs.annot_hist(dst, pth)
-    def annot_colors(dst, paths, colors):
-        for pth, col in zip(paths, colors):
-            trblobs.annot_hist(dst, pth, point=False, color=col, thickness=4)
     ns = None
     # span_i ranges inclusive over [0 .. len(stream) - 1]
     #   -> we have it start at 1, so it ranges over [1 .. len(stream)]
@@ -77,10 +87,7 @@ def blob_tracking(filepath, beginning, frame_count, flagger, stream, debug=None)
         sec = int(t)
 
         # generate analysis image
-        def gen_analysis(dst, ps):
-            numpy.copyto(dst, fi.image)
-            annot_analysis(dst, ps)
-        gen_analysis(ns.analysis, paths)
+        annot_analysis(ns.analysis, fi.image, paths)
 
         # FIXME: there is a bug here somewhere with span_count; perhaps related to the different frame starting number on mac/linux
         if sec not in ns.secs or span_i == span_count:
@@ -94,17 +101,13 @@ def blob_tracking(filepath, beginning, frame_count, flagger, stream, debug=None)
             path_borrowers = map(path_borrower, filtered_paths)
             map(color_lib.kaesu, set(ns.previous_path_borrowers) - set(path_borrowers))
             ns = ns._replace(previous_path_borrowers = path_borrowers)
-            # make color image fn
-            def gen_colors(dst, ps):
-                numpy.copyto(dst, fi.image)
-                numpy.copyto(dst, (dst * 0.25 + 255 * 0.75).astype(numpy.uint8))
-                annot_colors(dst, ps, map(color_lib.kariru, path_borrowers))
             # make image
-            gen_analysis(ns.out[:,:fi.image.shape[1]], filtered_paths)
-            gen_colors(ns.out[:,fi.image.shape[1]:], filtered_paths)
+            annot_analysis(ns.out[:,:fi.image.shape[1]], fi.image, filtered_paths)
+            annot_colors(ns.out[:,fi.image.shape[1]:], fi.image, filtered_paths,
+                    map(color_lib.kariru, path_borrowers))
             cv2.imwrite(outfile, ns.out)
 
-        yield ([ns.analysis], (paths, color_lib, path_borrowers))
+        yield ([ns.analysis], (paths, color_lib, path_borrowers, ns.out))
 
 
 def split_path(beginning, path):
@@ -707,13 +710,14 @@ def main(args):
     # consume the stream & run final analysis
     with window_maker as window:
         ret = cviter.displaySink(window, disp, ending=False)
-    _, color_lib, path_borrowers = ret.result
+    _, color_lib, path_borrowers, final_image = ret.result
     paths = iterutils.remove(flagger, ret.result[0])
+    assert len(paths) == len(path_borrowers), 'filtered paths correspond to borrowers'
 
     # save color legend
-    cv2.imwrite('{}_result-colors.png'.format(source_pathroot),
-            numpy.concatenate(map(swatch,
-                enumerate(map(color_lib.query, path_borrowers))), axis=0))
+    color_legend = numpy.concatenate(map(swatch,
+        enumerate(map(color_lib.query, path_borrowers))), axis=0)
+    cv2.imwrite('{}_result-colors.png'.format(source_pathroot), color_legend)
 
     print('= Fully consumed' if ret.fully_consumed else '= Early termination')
     print('= {} paths'.format(len(paths)))
