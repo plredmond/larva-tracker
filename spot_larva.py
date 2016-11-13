@@ -426,10 +426,17 @@ class CircleForScale(object):
             circles.annot_target(int(circle[0]), int(circle[1]), int(circle[2]), dst)
 
     @classmethod
-    def mk_annot_bqrc(cls, minFraction=None, maxFraction=None, **_):
+    def mk_annot_bqrc(cls, text, minFraction=None, maxFraction=None, **_):
+        def annot_centered_text(im, fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, thickness=2):
+            center = numpy.array(tuple(reversed(im.shape[:2]))) // 2
+            size, baseline = cv2.getTextSize(text, fontFace, fontScale, thickness)
+            loc = center - numpy.array(size) // 2
+            cv2.putText(im, text, tuple(loc - thickness), fontFace, fontScale, (255,) * 3, thickness=thickness)
+            cv2.putText(im, text, tuple(loc), fontFace, fontScale, (0,) * 3, thickness=thickness)
         def annot_bqrc(*args):
             QueryAOI.annot_bqr(*args)
             dst, lmb, xy, pts = args
+            annot_centered_text(dst)
             if pts:
                 box = numpy.array([pts[-1], xy])
                 cls.annot_circle_extents \
@@ -574,7 +581,6 @@ def main(args):
             , minFraction = 0.5
             , maxFraction = 1.4
             )
-        # TODO: must print question on the frame somewhere
         coin_aoi, coin_frames \
             = QueryAOI.query_aoi_main \
             ( source_pathroot
@@ -582,7 +588,7 @@ def main(args):
             , window_maker
             , images(cue(step=3))
             , cached = True
-            , annotator = CircleForScale.mk_annot_bqrc(**coin_iter_conf)
+            , annotator = CircleForScale.mk_annot_bqrc('Indicate the location of the coin by clicking two corners of its bounding-box.', **coin_iter_conf)
             )
         # TODO: write magic numbers in terms of frame resolution or appropriate
         # FIXME: confusing logic "only_coin" means that we collect coin info, save the debug image, and quit.. skip coin search
