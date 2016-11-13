@@ -584,26 +584,29 @@ def main(args):
             , cached = True
             , annotator = CircleForScale.mk_annot_bqrc(**coin_iter_conf)
             )
-        if args.only_coin:
-            print('= Terminating after collecting (or verifying) coin area-of-interest')
-            print(coin_aoi)
-            return 0 # early termination from main
         # TODO: write magic numbers in terms of frame resolution or appropriate
-        coin_mean_rel, _, mm_per_px_coin \
-            = CircleForScale.circle_for_scale_main \
-            ( 'coin'
-            , coin_frames
-            , 15   # min_ct
-            , 3.25 # max_std
-            , coin_iter_conf
-            , diameter_mm = args.coin_diameter
-            , debug = args.debug
-            )
+        # FIXME: confusing logic "only_coin" means that we collect coin info, save the debug image, and quit.. skip coin search
+        if not args.only_coin:
+            coin_mean_rel, _, mm_per_px_coin \
+                = CircleForScale.circle_for_scale_main \
+                ( 'coin'
+                , coin_frames
+                , 15   # min_ct
+                , 3.25 # max_std
+                , coin_iter_conf
+                , diameter_mm = args.coin_diameter
+                , debug = args.debug
+                )
         CircleForScale.annot_coin_result \
             ( debug_image
             , coin_aoi
-            , numpy.concatenate([coin_aoi.pt0.xy + coin_mean_rel[:2], coin_mean_rel[2:]])
+            , None if args.only_coin else numpy.concatenate([coin_aoi.pt0.xy + coin_mean_rel[:2], coin_mean_rel[2:]])
             )
+        if args.only_coin:
+            print('= Terminating after collecting (or verifying) coin area-of-interest')
+            print(coin_aoi)
+            cv2.imwrite(source_pathroot + '_result-circles.png', debug_image) # write debug image early
+            return 0 # early termination from main
 
     # TODO: write magic numbers in terms of frame resolution or appropriate
     # (scale2) petri dish for crop
