@@ -66,7 +66,7 @@ class MouseQuery(object):
                 raise ValueError('ESC key')
         return self.__points_collected
 
-pulse_brightness = lambda: int(time.time() * 2) % 2 * 255
+pulse_brightness = lambda: int(int(time.time() * 2) % 2 * 255)
 pulse = lambda dst, _, __, ___: (pulse_brightness(),) * (1 if dst.ndim <= 2 else dst.shape[2])
 
 def annotate_box(dst, lmb, xy, pts, color_fn=None):
