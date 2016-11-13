@@ -420,9 +420,10 @@ class CircleForScale(object):
         return (mean, std, mm_per_px if diameter_mm else None)
 
     @staticmethod
-    def annot_coin_result(dst, box, circle):
+    def annot_coin_result(dst, box, circle=None):
         box.rectangle(dst, (0,255,255))
-        circles.annot_target(int(circle[0]), int(circle[1]), int(circle[2]), dst)
+        if circle is not None:
+            circles.annot_target(int(circle[0]), int(circle[1]), int(circle[2]), dst)
 
     @classmethod
     def mk_annot_bqrc(cls, minFraction=None, maxFraction=None, **_):
