@@ -1,22 +1,75 @@
 # Usage
 
 The `spot_larva.py` program has a fairly comprehensive set of documented
-arguments. View them with `./spot_larva.py --help` at your shell.
+arguments. View them with the shell command:
+
+```sh-session
+$ ./spot_larva.py --help
+```
+
+1. ### Todo
+
+    * describe debugging of tracking
+    * describe output format(s)
+    * describe helper programs
 
 1. ### Brief Tutorial
 
-    todo:
+    1. Run the spot_larva program with commands at your shell interpreter (eg.
+       `bash`, wherein the command excludes the `$ ` at the beginning).
 
-    * run / invocation example
-    * detect petri dish
-        * what are detection limitations?
-    * select coin area of interest
-        * detect coin
-        * what are detection limitations?
-    * tracking
-    * output format(s)
-        * helper program
-    * note about area of interest saved
+        ```sh-session
+        $ ./spot_larva.py --window-height 700 examples/IMG_2918.MOV
+        ```
+
+        * This command runs the tracking algorithm on the example data included
+          in this repository with a 700px tall diagnostic output window
+          (*OpenCV 2.4* on Mac doesn't properly detect the screen height).
+
+        * The program will detect and use the size of the petri dish in the
+          frame to scale the data. It assumes a 15mm petri dish. If the petri
+          dish in your video is not 15mm in diameter, use the
+          `-p/--petri-dish-diameter` option to set the correct size.
+
+            * The petri dish must be between 80-120% of the narrow-dimension of
+              the video frame.
+
+    1. The diagnostic window will request that you "circle the coin" in the
+       video frame to assist in scaling the data accurately.
+
+        * *If you have no coin in your video frame, press the `ESC` key to
+          quit. Then run the program with the `--no-coin` option to skip this
+          step.*
+
+        * To circle the coin, click twice (once at each corner of the
+          bounding-box around the coin). Try to make the green circle match the
+          coin, but it's not necessary to be accurate. The yellow circles
+          indicate the minimum and maximum allowed detection radius (50-140% of
+          the yellow square).
+
+            ![circle the coin](examples/coin-size.gif)
+
+        * The coin bounding box is cached in a file at
+          `examples/IMG_2918.coin.npy` so that you don't have to select it
+          every time you run the analysis. If you'd like to select it again,
+          just move or delete that file.
+
+        * The coin is assumed to be a 19.05 mm US penny. Use the
+          `-c/--coin-diameter` option if you'd like to use a coin of a
+          different size.
+
+    1. The tracking program proceeds by itself. *Press the `ESC` key to quit.*
+
+        1. Detect the coin size (no visual feedback). Add `--debug coin` to see
+           visual feedback for this stage.
+
+        1. Detect the petri-dish size (no visual feedback). Add `--debug petri`
+           to see visual feedback for this stage.
+
+        1. Detect larva blobs in each frame, and map them to the subsequent
+           frame using optical flow; Paths are drawn as they are detected.
+
+            ![tracking](examples/tracking.png)
 
 1. ### Arguments in depth
 
@@ -89,7 +142,7 @@ arguments. View them with `./spot_larva.py --help` at your shell.
         are filtered when they consist of a high proportion of flow-nodes
         (meaning, a blob wasn't detected and optical-flow was used to
         extend the path).
-        
+
         * If you notice larva paths with red sections are being filtered or
           broken, increase this value.
         * If you notice video-noise artifact paths are being included,

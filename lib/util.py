@@ -75,6 +75,10 @@ class Box(object):
     @property
     def slices(self):
         return tuple(map(functools.partial(apply, slice), self.__arr.transpose()))
+    @property
+    def slices_inty(self):
+        # TODO: dry-up with above
+        return tuple(map(functools.partial(apply, slice), self.__arr.transpose().round().astype(int)))
     def rectangle(self, img, color, **kwargs):
         '''numpy.ndarray, tup<num>[, kwargs of cv2.rectangle] -> None'''
         pt0, pt1 = numpy.fliplr(self.__arr)

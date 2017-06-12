@@ -349,7 +349,7 @@ class QueryAOI(object):
     @staticmethod
     def apply_aoi(aoi, raw_frames):
         '''AOI, iter<numpy.array> -> iter<numpy.array>'''
-        s = aoi.slices
+        s = aoi.slices_inty
         return itertools.imap(lambda im: im[s], raw_frames)
 
     @staticmethod
@@ -429,10 +429,11 @@ class CircleForScale(object):
     def mk_annot_bqrc(cls, text, minFraction=None, maxFraction=None, **_):
         def annot_centered_text(im, fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, thickness=2):
             center = numpy.array(tuple(reversed(im.shape[:2]))) // 2
-            size, baseline = cv2.getTextSize(text, fontFace, fontScale, thickness)
-            loc = center - numpy.array(size) // 2
-            cv2.putText(im, text, tuple(loc - thickness), fontFace, fontScale, (255,) * 3, thickness=thickness)
-            cv2.putText(im, text, tuple(loc), fontFace, fontScale, (0,) * 3, thickness=thickness)
+            for n, line in enumerate(text.split('\n')):
+                size, baseline = cv2.getTextSize(line, fontFace, fontScale, thickness)
+                loc = center - numpy.array(size) // 2 + n * numpy.array([0, int(size[1] * 1.5)])
+                cv2.putText(im, line, tuple(loc - thickness // 2), fontFace, fontScale, (255,) * 3, thickness=thickness)
+                cv2.putText(im, line, tuple(loc), fontFace, fontScale, (0,) * 3, thickness=thickness)
         def annot_bqrc(*args):
             QueryAOI.annot_bqr(*args)
             dst, lmb, xy, pts = args
@@ -588,7 +589,7 @@ def main(args):
             , window_maker
             , images(cue(step=3))
             , cached = True
-            , annotator = CircleForScale.mk_annot_bqrc('Indicate the location of the coin by clicking two corners of its bounding-box.', **coin_iter_conf)
+            , annotator = CircleForScale.mk_annot_bqrc('Indicate the location of the coin by clicking\ntwo corners of its bounding-box.', **coin_iter_conf)
             )
         # TODO: write magic numbers in terms of frame resolution or appropriate
         # FIXME: confusing logic "only_coin" means that we collect coin info, save the debug image, and quit.. skip coin search

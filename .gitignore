@@ -5,3 +5,4 @@ env/
 *.npy
 *.p
 .DS_Store
+example-data/

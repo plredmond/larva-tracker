@@ -8,6 +8,7 @@ from __future__ import \
     , unicode_literals
     )
 
+import os.path
 import collections
 import argparse
 import functools
@@ -67,6 +68,8 @@ class Capture(object):
 
            Construct a Capture object from file-path or device-number.
         '''
+        if not os.path.exists(source):
+            raise ValueError("No such file")
         self.__source = source
         self.__video_capture = cv2.VideoCapture(source)
         if not self.__video_capture.isOpened():
@@ -245,8 +248,8 @@ class WindowMaker(object):
             # TODO: pull out implicit args, such as fb left side which is currently 0
             src_w, src_h = src_size
             return self.__fb \
-                [ 0 : round(src_h * self.__sf)
-                , 0 : round(src_w * self.__sf)
+                [ 0 : int(round(src_h * self.__sf))
+                , 0 : int(round(src_w * self.__sf))
                 ]
 
         def ims_show(self, ims_, ms=1):
